@@ -63,9 +63,10 @@ class BM25Index:
         """Returns list of (passage_text, bm25_score) sorted by score descending."""
         if self._model is None:
             raise RuntimeError("Index not built or loaded.")
-        tokenized_query = _tokenize(query)
+        # bm25s.tokenize expects raw strings, not pre-tokenized lists
+        tokenized = bm25s.tokenize([query], show_progress=False)
         results, scores = self._model.retrieve(
-            bm25s.tokenize([tokenized_query], show_progress=False),
+            tokenized,
             corpus=self._passages,
             k=min(top_k, len(self._passages)),
         )
@@ -78,9 +79,9 @@ class BM25Index:
         """Returns list of (passage_index, passage_text, score)."""
         if self._model is None:
             raise RuntimeError("Index not built or loaded.")
-        tokenized_query = _tokenize(query)
+        tokenized = bm25s.tokenize([query], show_progress=False)
         results, scores = self._model.retrieve(
-            bm25s.tokenize([tokenized_query], show_progress=False),
+            tokenized,
             corpus=self._passages,
             k=min(top_k, len(self._passages)),
         )
