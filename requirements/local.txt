@@ -1,0 +1,9 @@
+-r base.txt
+bm25s>=0.2.0
+pyspellchecker>=0.8.0
+rich>=13.0.0
+ipykernel>=6.25.0
+jupyter>=1.0.0
+pytest>=7.4.0
+# faiss-cpu: install via conda on arm64
+# conda install -c conda-forge faiss-cpu

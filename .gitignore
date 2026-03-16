@@ -1,0 +1,41 @@
+# Data — never commit large files
+data/triplets/
+data/index/
+data/checkpoints/
+*.faiss
+*.jsonl
+*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environments
+.env
+.venv/
+venv/
+env/
+
+# HuggingFace cache
+.cache/
+hf_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/

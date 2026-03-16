@@ -1,0 +1,65 @@
+environment: auto  # auto-detect: "local" if no CUDA, else "remote"
+
+data:
+  dataset: "microsoft/ms_marco"
+  dataset_config: "v2.1"
+  split_train: "train"
+  split_dev: "validation"
+  sample_cap: null  # null = full dataset; overridden to 1000 in local_settings.yaml
+
+chunking:
+  max_tokens: 256
+  min_tokens_merge: 64      # paragraphs shorter than this get merged with next
+  tokenizer: "bert-base-uncased"
+
+bm25:
+  top_k_retrieve: 100
+  n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
+
+model:
+  bi_encoder: "bert-base-uncased"
+  cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  hyde_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  hyde_quantization: "awq"
+  hyde_gpu_memory_utilization: 0.4
+  hyde_max_tokens: 200
+  hyde_server_remote: "http://localhost:8000/v1/completions"
+  hyde_server_local: "http://localhost:11434/api/generate"
+  hyde_timeout: 10
+
+inference:
+  query_rewriting: false    # toggle: spell check + WordNet synonym expansion before HyDE
+  colbert_model: "colbert-ir/colbertv2.0"
+  colbert_top_k: 50
+  crossencoder_top_k: 10
+  crossencoder_batch_size: 16
+
+training:
+  global_batch_size: 256
+  per_gpu_batch_size: 64
+  grad_accumulation_steps: 2   # 64 * 2 * 2 GPUs = 256 effective
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  lr_scheduler: "cosine_with_hard_restarts"
+  num_cycles: 3
+  max_steps: 100000
+  eval_every_steps: 10000
+  checkpoint_every_steps: 5000
+  early_stop_patience: 3
+  fp16: true
+  num_gpus: 2
+
+faiss:
+  index_type: "IVFFlat"     # overridden to "Flat" in local_settings.yaml
+  nlist: 4096
+  nprobe: 64
+  use_gpu: false            # overridden to true in remote_settings.yaml
+
+paths:
+  data_dir: "data/"
+  triplets_file: "data/triplets/hard_negatives.jsonl"
+  bm25_index_dir: "data/index/bm25"
+  faiss_index_path: "data/index/passages.faiss"
+  passage_store_path: "data/index/passage_store.pkl"
+  checkpoint_dir: "data/checkpoints/"
+  best_model_dir: "data/checkpoints/best_model/"

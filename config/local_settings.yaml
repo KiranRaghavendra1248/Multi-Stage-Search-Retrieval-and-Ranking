@@ -1,0 +1,12 @@
+environment: local
+
+data:
+  sample_cap: 1000
+
+faiss:
+  index_type: "Flat"
+  use_gpu: false
+
+training:
+  fp16: false   # MPS (Apple Silicon) doesn't support fp16 AMP reliably
+  num_gpus: 0

@@ -1,0 +1,14 @@
+environment: remote
+
+data:
+  sample_cap: null
+
+faiss:
+  index_type: "IVFFlat"
+  nlist: 4096
+  nprobe: 64
+  use_gpu: true
+
+training:
+  fp16: true
+  num_gpus: 2
