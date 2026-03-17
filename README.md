@@ -34,21 +34,60 @@ Raw Query
 └──────────────┘              └──────────────────┘
 ```
 
-**Phase 5 compares 6 variants** — both pipelines with and without query rewriting — measuring MRR@10 and end-to-end latency.
+**Phase 5 compares 7 variants** — baselines, ablations, and both pipelines with and without query rewriting — measuring MRR@10, Recall@100, and end-to-end latency.
+
+---
+
+## Experiments
+
+Phase 5 runs 7 variants on the full MS MARCO Dev set (6,980 queries). Each variant isolates one variable so the contribution of each component can be measured independently.
+
+### Variant 1 — BM25 Baseline
+Pure lexical retrieval using `bm25s`. No neural components. Sets the floor — establishes how much value dense retrieval adds over keyword matching alone.
+
+### Variant 2 — Pre-trained MS MARCO Bi-Encoder (no fine-tuning)
+`sentence-transformers/msmarco-MiniLM-L-6-v3` used as-is, with no additional training. This is the **benchmark** for our training pipeline. It answers the key question: does our hard-negative fine-tuning on MS MARCO improve over a model that was already pre-trained on MS MARCO? If yes, the training pipeline adds measurable value beyond what is publicly available.
+
+### Variant 3 — Our Fine-Tuned Bi-Encoder Only (Stage 1 ablation)
+`all-MiniLM-L6-v2` fine-tuned with MNRL + BM25 hard negatives, no re-ranker. Isolates the contribution of Stage 1 dense retrieval alone, before any re-ranking. Compared directly against Variant 2 to measure the impact of our training.
+
+### Variant 4 — Pipeline A: Fine-Tuned Bi-Encoder + ColBERT (no query rewriting)
+Stage 1 top-1000 → ColBERT v2 re-ranks to top-50. ColBERT uses **late interaction**: each query token independently attends to each passage token, taking the max similarity per query token then summing. Fast because token embeddings are pre-computed offline. Measures the quality gain from re-ranking at low latency cost.
+
+### Variant 5 — Pipeline B: Fine-Tuned Bi-Encoder + Cross-Encoder (no query rewriting)
+Stage 1 top-1000 → Cross-Encoder re-ranks to top-10. The cross-encoder concatenates `[query, passage]` and runs full cross-attention — every query token sees every passage token jointly. Slower but higher precision. This is the **precision ceiling** — the best achievable result with this architecture family.
+
+### Variant 6 — Pipeline A + Query Rewriting
+Same as Variant 4 but with query rewriting enabled before HyDE: pyspellchecker corrects typos, WordNet appends one synonym per content word (nouns + verbs only). Measures whether pre-retrieval query expansion improves MRR@10 and at what latency cost.
+
+### Variant 7 — Pipeline B + Query Rewriting
+Same as Variant 5 with query rewriting enabled. The most expensive variant end-to-end: spell check + synonym expansion + HyDE + dense retrieval + cross-encoder re-ranking.
+
+---
+
+## Research Questions
+
+| Question | Variants compared |
+|---|---|
+| How much does dense retrieval gain over BM25? | V1 vs V3 |
+| Does our hard-negative training beat the public MS MARCO model? | V2 vs V3 |
+| How much does re-ranking improve over Stage 1 alone? | V3 vs V4 vs V5 |
+| What is the latency/quality tradeoff between ColBERT and Cross-Encoder? | V4 vs V5 |
+| Does query rewriting help? At what latency cost? | V4 vs V6, V5 vs V7 |
 
 ---
 
 ## Results (Expected)
 
-| Variant                                   | MRR@10 | Recall@100 | Avg Latency |
-|-------------------------------------------|--------|------------|-------------|
-| BM25 Baseline                             | ~0.17  | ~0.60      | ~15ms       |
-| Pre-trained MS MARCO bi-encoder (no FT)   | ~0.31  | ~0.86      | ~30ms       |
-| Our fine-tuned bi-encoder only            | ~0.30+ | ~0.85+     | ~30ms       |
-| Pipeline A: ColBERT                       | ~0.38  | ~0.87      | ~150ms      |
-| Pipeline B: Cross-Encoder                 | ~0.40  | ~0.87      | ~600ms      |
-| Pipeline A + Query Rewriting              | TBD    | TBD        | TBD         |
-| Pipeline B + Query Rewriting              | TBD    | TBD        | TBD         |
+| Variant                                        | MRR@10 | Recall@100 | Avg Latency |
+|------------------------------------------------|--------|------------|-------------|
+| V1: BM25 Baseline                              | ~0.17  | ~0.60      | ~15ms       |
+| V2: Pre-trained MS MARCO bi-encoder (no FT)    | ~0.31  | ~0.86      | ~30ms       |
+| V3: Our fine-tuned bi-encoder only             | ~0.30+ | ~0.85+     | ~30ms       |
+| V4: Pipeline A — ColBERT (no rewriting)        | ~0.38  | ~0.87      | ~150ms      |
+| V5: Pipeline B — Cross-Encoder (no rewriting)  | ~0.40  | ~0.87      | ~600ms      |
+| V6: Pipeline A + Query Rewriting               | TBD    | TBD        | TBD         |
+| V7: Pipeline B + Query Rewriting               | TBD    | TBD        | TBD         |
 
 > **Key question:** Does our hard-negative fine-tuning match or beat the pre-trained MS MARCO bi-encoder (Variant 2)? If yes, the training pipeline adds measurable value.
 
@@ -83,7 +122,7 @@ Raw Query
 │   │   └── stage2_crossencoder.py # Pipeline B: MiniLM cross-encoder
 │   └── evaluation/
 │       ├── metrics.py            # MRR@K, Recall@K, NDCG@K (from scratch)
-│       └── compare.py            # 6-variant comparison table
+│       └── compare.py            # 7-variant comparison table
 ├── scripts/
 │   ├── phase1_local_dev.py       # Local prototype (no disk writes, < 2 min)
 │   ├── phase2_mine_negatives.py  # Full BM25 indexing + 500k triplet mining
@@ -102,8 +141,6 @@ Raw Query
 ```bash
 # 1. Install dependencies
 make setup-local
-# Note: install faiss-cpu separately on arm64:
-conda install -c conda-forge faiss-cpu
 
 # 2. Copy and fill env file
 cp .env.example .env
