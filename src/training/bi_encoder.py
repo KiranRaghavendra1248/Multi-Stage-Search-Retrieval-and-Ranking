@@ -7,6 +7,10 @@ from src.utils.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
+def _get_device() -> torch.device:
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class BiEncoder(nn.Module):
     """
     Two-tower bi-encoder built on top of BERT/DistilBERT.
@@ -40,11 +44,15 @@ class BiEncoder(nn.Module):
         return nn.functional.normalize(pooled, p=2, dim=-1)
 
     @torch.no_grad()
-    def encode(self, texts: list[str], batch_size: int = 64, device: str = "cpu") -> np.ndarray:
+    def encode(self, texts: list[str], batch_size: int = 64, device=None) -> np.ndarray:
         """
         Encode a list of texts and return a numpy float32 array [N, dim].
         Used at inference time (FAISS indexing, retrieval).
+        Auto-detects GPU if device is not specified.
         """
+        if device is None:
+            device = _get_device()
+        device = torch.device(device)
         self.eval()
         self.to(device)
         all_embs = []
@@ -65,13 +73,6 @@ class BiEncoder(nn.Module):
 
     @classmethod
     def load(cls, path: str) -> "BiEncoder":
-        instance = cls.__new__(cls)
-        nn.Module.__init__(instance)
-        instance.model_name = path
-        instance.encoder = AutoModel.from_pretrained(path)
-        instance.tokenizer = AutoTokenizer.from_pretrained(path)
-        instance._mean_pool = cls._mean_pool.__get__(instance, cls)
-        instance.forward = cls.forward.__get__(instance, cls)
-        instance.encode = cls.encode.__get__(instance, cls)
+        instance = cls(model_name=path)
         logger.info("BiEncoder loaded from %s", path)
         return instance
