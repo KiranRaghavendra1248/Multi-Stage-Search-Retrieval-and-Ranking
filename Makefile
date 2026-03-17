@@ -13,8 +13,7 @@ setup-local: venv
 	.venv/bin/pip install -e .
 	.venv/bin/python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng')"
 	@echo ""
-	@echo "Note: install faiss-cpu via conda: conda install -c conda-forge faiss-cpu"
-	@echo "Then activate: source .venv/bin/activate"
+	@echo "Setup complete. Activate with: source .venv/bin/activate"
 
 setup-remote:
 	python3 -m venv .venv
