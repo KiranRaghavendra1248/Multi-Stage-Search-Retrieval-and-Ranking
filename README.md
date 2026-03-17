@@ -43,9 +43,9 @@ Raw Query
 | Variant                         | MRR@10 | Recall@100 | Avg Latency |
 |---------------------------------|--------|------------|-------------|
 | BM25 Baseline                   | ~0.17  | ~0.60      | ~15ms       |
-| Bi-encoder only                 | ~0.25  | ~0.80      | ~50ms       |
-| Pipeline A: ColBERT             | ~0.35  | ~0.82      | ~200ms      |
-| Pipeline B: Cross-Encoder       | ~0.38  | ~0.82      | ~800ms      |
+| Bi-encoder only                 | ~0.30  | ~0.85      | ~30ms       |
+| Pipeline A: ColBERT             | ~0.38  | ~0.87      | ~150ms      |
+| Pipeline B: Cross-Encoder       | ~0.40  | ~0.87      | ~600ms      |
 | Pipeline A + Query Rewriting    | TBD    | TBD        | TBD         |
 | Pipeline B + Query Rewriting    | TBD    | TBD        | TBD         |
 
