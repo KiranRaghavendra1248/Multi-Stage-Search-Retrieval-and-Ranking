@@ -40,14 +40,17 @@ Raw Query
 
 ## Results (Expected)
 
-| Variant                         | MRR@10 | Recall@100 | Avg Latency |
-|---------------------------------|--------|------------|-------------|
-| BM25 Baseline                   | ~0.17  | ~0.60      | ~15ms       |
-| Bi-encoder only                 | ~0.30  | ~0.85      | ~30ms       |
-| Pipeline A: ColBERT             | ~0.38  | ~0.87      | ~150ms      |
-| Pipeline B: Cross-Encoder       | ~0.40  | ~0.87      | ~600ms      |
-| Pipeline A + Query Rewriting    | TBD    | TBD        | TBD         |
-| Pipeline B + Query Rewriting    | TBD    | TBD        | TBD         |
+| Variant                                   | MRR@10 | Recall@100 | Avg Latency |
+|-------------------------------------------|--------|------------|-------------|
+| BM25 Baseline                             | ~0.17  | ~0.60      | ~15ms       |
+| Pre-trained MS MARCO bi-encoder (no FT)   | ~0.31  | ~0.86      | ~30ms       |
+| Our fine-tuned bi-encoder only            | ~0.30+ | ~0.85+     | ~30ms       |
+| Pipeline A: ColBERT                       | ~0.38  | ~0.87      | ~150ms      |
+| Pipeline B: Cross-Encoder                 | ~0.40  | ~0.87      | ~600ms      |
+| Pipeline A + Query Rewriting              | TBD    | TBD        | TBD         |
+| Pipeline B + Query Rewriting              | TBD    | TBD        | TBD         |
+
+> **Key question:** Does our hard-negative fine-tuning match or beat the pre-trained MS MARCO bi-encoder (Variant 2)? If yes, the training pipeline adds measurable value.
 
 ---
 
@@ -193,3 +196,15 @@ pytest tests/ -v
 - `vllm` — High-throughput LLM inference for HyDE
 - `omegaconf` — Hierarchical YAML config with local/remote overrides
 - `pyspellchecker` + `nltk` — Query rewriting pre-processing
+
+---
+
+## Notes & Design Decisions
+
+See [docs/architecture_notes.md](docs/architecture_notes.md) for detailed explanations of:
+- Bi-encoder vs Cross-Encoder architecture and why they can't be swapped
+- Why contrastive learning enables retrieval but ranking objective doesn't
+- Hard negative mining strategy and batch composition
+- Model choices and the training benchmark (Variant 2)
+- LR scheduling rationale (warmup + cosine restarts)
+- HyDE query expansion mechanics

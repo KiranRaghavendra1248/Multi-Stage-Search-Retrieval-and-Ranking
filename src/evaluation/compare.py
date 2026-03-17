@@ -5,6 +5,8 @@ from tqdm import tqdm
 
 from src.data.ms_marco_loader import load_msmarco_stream
 from src.evaluation.metrics import mrr_at_k, recall_at_k
+from src.training.bi_encoder import BiEncoder
+from src.inference.stage1_dense import DenseRetriever
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -20,15 +22,16 @@ class VariantResult:
 
 def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     """
-    Run all 6 pipeline variants on the MS MARCO dev set and return results.
+    Run all 7 pipeline variants on the MS MARCO dev set and return results.
 
     Variants:
         1. BM25 only
-        2. Bi-encoder only (Stage 1)
-        3. Pipeline A: Bi-encoder + ColBERT (no query rewriting)
-        4. Pipeline B: Bi-encoder + Cross-Encoder (no query rewriting)
-        5. Pipeline A + query rewriting
-        6. Pipeline B + query rewriting
+        2. Pre-trained MS MARCO bi-encoder (no fine-tuning) — upper bound benchmark
+        3. Our fine-tuned bi-encoder only (Stage 1)
+        4. Pipeline A: Fine-tuned bi-encoder + ColBERT (no query rewriting)
+        5. Pipeline B: Fine-tuned bi-encoder + Cross-Encoder (no query rewriting)
+        6. Pipeline A + query rewriting
+        7. Pipeline B + query rewriting
     """
     logger.info("Loading dev set for comparison...")
     dev_records = load_msmarco_stream(cfg, split=cfg.data.split_dev)
@@ -63,7 +66,33 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         avg_latency_ms=sum(latencies) / len(latencies),
     ))
 
-    # --- Load dense retriever (shared by variants 2–6) ---
+    # --- 2. Pre-trained MS MARCO bi-encoder (no fine-tuning) ---
+    # Benchmarks what the pre-trained model achieves without our training.
+    # Key question: does our hard-negative fine-tuning beat this?
+    logger.info("Variant 2: Pre-trained MS MARCO bi-encoder (no fine-tuning)")
+    pretrained_retriever = DenseRetriever(
+        model=BiEncoder(cfg.model.pretrained_msmarco_biencoder),
+        cfg=cfg,
+    )
+    all_passages = list({
+        p for r in dev_records
+        for p in r["passages"].get("passage_text", [])
+    })
+    pretrained_retriever.build_index(all_passages)
+    ranked_lists, latencies = [], []
+    for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="Pretrained bi-enc"):
+        t0 = time.perf_counter()
+        stage1 = pretrained_retriever.retrieve(query, top_k=1000)
+        latencies.append((time.perf_counter() - t0) * 1000)
+        ranked_lists.append([r["passage"] for r in stage1[:10]])
+    results.append(VariantResult(
+        name="Pre-trained MS MARCO bi-encoder",
+        mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
+        recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+        avg_latency_ms=sum(latencies) / len(latencies),
+    ))
+
+    # --- Load our fine-tuned dense retriever (shared by variants 3–7) ---
     retriever = DenseRetriever.from_config(cfg)
     retriever.load()
     colbert = ColBERTReranker(cfg)
@@ -96,7 +125,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
             avg_latency_ms=sum(latencies) / len(latencies),
         )
 
-    results.append(_run_variant("Bi-encoder only", use_rewriting=False, reranker=None))
+    results.append(_run_variant("Fine-tuned bi-encoder only", use_rewriting=False, reranker=None))
     results.append(_run_variant("Pipeline A: ColBERT", use_rewriting=False, reranker=colbert))
     results.append(_run_variant("Pipeline B: Cross-Encoder", use_rewriting=False, reranker=cross_enc))
     results.append(_run_variant("Pipeline A + Query Rewriting", use_rewriting=True, reranker=colbert))

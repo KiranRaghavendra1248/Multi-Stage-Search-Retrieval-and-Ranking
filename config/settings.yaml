@@ -18,6 +18,7 @@ bm25:
 
 model:
   bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"
+  pretrained_msmarco_biencoder: "sentence-transformers/msmarco-MiniLM-L-6-v3"  # variant 2 benchmark
   cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   hyde_model: "meta-llama/Meta-Llama-3-8B-Instruct"
   hyde_quantization: "awq"
