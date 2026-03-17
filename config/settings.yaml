@@ -10,14 +10,14 @@ data:
 chunking:
   max_tokens: 256
   min_tokens_merge: 64      # paragraphs shorter than this get merged with next
-  tokenizer: "bert-base-uncased"
+  tokenizer: "sentence-transformers/all-MiniLM-L6-v2"
 
 bm25:
   top_k_retrieve: 100
   n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
 
 model:
-  bi_encoder: "bert-base-uncased"
+  bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"
   cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   hyde_model: "meta-llama/Meta-Llama-3-8B-Instruct"
   hyde_quantization: "awq"
