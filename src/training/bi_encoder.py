@@ -59,7 +59,7 @@ class BiEncoder(nn.Module):
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             enc = self.tokenizer(
-                batch, padding=True, truncation=True, max_length=128, return_tensors="pt"
+                batch, padding=True, truncation=True, max_length=256, return_tensors="pt"
             )
             enc = {k: v.to(device) for k, v in enc.items()}
             embs = self.forward(enc)

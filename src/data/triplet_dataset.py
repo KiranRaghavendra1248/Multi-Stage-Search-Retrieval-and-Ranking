@@ -51,7 +51,7 @@ class TripletDataset(Dataset):
         }
 
 
-def build_collate_fn(tokenizer_name: str, max_length: int = 128):
+def build_collate_fn(tokenizer_name: str, max_length: int = 256):
     """
     Returns a collate_fn that tokenizes a batch of TripletDataset items.
 

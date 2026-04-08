@@ -211,6 +211,9 @@ An optional pre-retrieval step applies pyspellchecker for typo correction and Wo
 - GPU 0 (40%): Llama-3-8B-Instruct AWQ (~6.4GB) via vLLM
 - GPU 0 (remaining) + GPU 1: Bi-encoder, FAISS IVFFlat index, ColBERT/Cross-Encoder
 
+**System RAM note (Phase 2):**
+The BM25 index is built entirely in memory before being saved to disk. At full MS MARCO scale (~10M passages after chunking), this requires ~10–15 GB system RAM. 32 GB+ recommended.
+
 ---
 
 ## Running Tests

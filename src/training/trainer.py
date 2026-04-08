@@ -43,7 +43,7 @@ def train(cfg: DictConfig) -> BiEncoder:
     dataset = TripletDataset(cfg.paths.triplets_file, k_hard_negatives=1)
     collate_fn = build_collate_fn(
         tokenizer_name=cfg.model.bi_encoder,
-        max_length=128,
+        max_length=256,
     )
     loader = DataLoader(
         dataset,
