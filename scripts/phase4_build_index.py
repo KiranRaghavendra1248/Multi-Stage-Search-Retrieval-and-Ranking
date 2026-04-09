@@ -36,7 +36,7 @@ def main():
 
     logger.info("Streaming full MS MARCO corpus...")
     all_passages = []
-    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming corpus", unit="doc", leave=True):
+    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming corpus", unit="doc", total=808731, leave=True):
         all_passages.extend(rec["passages"].get("passage_text", []))
 
     logger.info("Total passages: %d", len(all_passages))
