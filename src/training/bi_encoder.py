@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, BatchEncoding
 from src.utils.logging_utils import get_logger
 
@@ -56,7 +57,8 @@ class BiEncoder(nn.Module):
         self.eval()
         self.to(device)
         all_embs = []
-        for i in range(0, len(texts), batch_size):
+        total_batches = (len(texts) + batch_size - 1) // batch_size
+        for i in tqdm(range(0, len(texts), batch_size), total=total_batches, desc="Encoding", unit="batch", leave=True):
             batch = texts[i : i + batch_size]
             enc = self.tokenizer(
                 batch, padding=True, truncation=True, max_length=256, return_tensors="pt"

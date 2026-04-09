@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from tqdm import tqdm
 from src.utils.config import load_config
 from src.utils.logging_utils import get_logger
 from src.data.ms_marco_loader import iter_msmarco_stream
@@ -35,7 +36,7 @@ def main():
 
     logger.info("Streaming full MS MARCO corpus...")
     all_passages = []
-    for rec in iter_msmarco_stream(cfg, split=cfg.data.split_train):
+    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming corpus", unit="doc", leave=True):
         all_passages.extend(rec["passages"].get("passage_text", []))
 
     logger.info("Total passages: %d", len(all_passages))
