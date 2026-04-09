@@ -15,6 +15,7 @@ chunking:
 bm25:
   top_k_retrieve: 100
   n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
+  max_triplets: 100000      # cap on mined triplets; null = mine all 500k queries
 
 model:
   bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"

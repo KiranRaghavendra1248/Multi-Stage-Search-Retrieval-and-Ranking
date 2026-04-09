@@ -67,6 +67,7 @@ def main():
             seen_queries=seen_queries,
             n_hard_negatives=cfg.bm25.n_hard_negatives,
             bm25_top_k=cfg.bm25.top_k_retrieve,
+            max_triplets=cfg.bm25.get("max_triplets", None),
         )
 
     logger.info("Phase 2 complete. Stats: %s", stats)

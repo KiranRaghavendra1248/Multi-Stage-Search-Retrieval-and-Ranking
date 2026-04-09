@@ -1,6 +1,6 @@
 # Multi-Stage Document Retrieval & Ranking Pipeline
 
-A production-grade information retrieval system built on MS MARCO (3.2M documents), implementing hard negative mining, bi-encoder fine-tuning, HyDE query expansion, and a comparative study of two re-ranking strategies.
+A production-grade information retrieval system built on MS MARCO (3.2M documents), implementing hard negative mining, bi-encoder fine-tuning, HyDE query expansion, and a comparative study of two re-ranking strategies. Hard negative mining is capped at 100k triplets — sufficient for fine-tuning and significantly faster than mining all 500k queries.
 
 ---
 
@@ -202,7 +202,7 @@ An optional pre-retrieval step applies pyspellchecker for typo correction and Wo
 | Phase | Hardware | Est. Time |
 |---|---|---|
 | Phase 1 (local dev) | MacBook (arm64, no GPU) | < 2 min |
-| Phase 2 (mining) | Vast.ai 2×16GB GPU | 4–6 hrs |
+| Phase 2 (mining) | Vast.ai 2×16GB GPU | ~6 hrs (1hr index build + ~5hrs for 100k triplets) |
 | Phase 3 (training) | Vast.ai 2×16GB GPU | 8–12 hrs |
 | Phase 4 (inference) | Vast.ai 2×16GB GPU | interactive |
 | Phase 5 (eval) | Vast.ai 2×16GB GPU | 2–4 hrs |

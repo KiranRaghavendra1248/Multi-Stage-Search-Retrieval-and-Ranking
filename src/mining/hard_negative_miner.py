@@ -15,6 +15,7 @@ def mine_hard_negatives(
     n_hard_negatives: int = 5,
     bm25_top_k: int = 100,
     total: int | None = None,
+    max_triplets: int | None = None,
 ) -> dict:
     """
     Mine hard negatives for each record and write triplets via writer.
@@ -27,6 +28,7 @@ def mine_hard_negatives(
         n_hard_negatives: How many hard negatives to store per triplet (default 5).
         bm25_top_k:       How many BM25 results to retrieve before filtering.
         total:            Optional total count for tqdm progress bar.
+        max_triplets:     Stop after writing this many triplets (None = no cap).
 
     Returns:
         Stats dict: {written, skipped_seen, skipped_no_positive, skipped_few_negatives}
@@ -38,7 +40,11 @@ def mine_hard_negatives(
         "skipped_few_negatives": 0,
     }
 
+    already_written = len(seen_queries)
     for record in tqdm(records, total=total, desc="Mining hard negatives", unit="query"):
+        if max_triplets is not None and (already_written + stats["written"]) >= max_triplets:
+            logger.info("Reached max_triplets=%d — stopping.", max_triplets)
+            break
         query: str = record["query"]
         positive: str | None = record["positive_passage"]
 
