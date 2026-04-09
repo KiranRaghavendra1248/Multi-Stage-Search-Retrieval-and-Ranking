@@ -1,5 +1,6 @@
 import pickle
 import numpy as np
+import torch
 from pathlib import Path
 from omegaconf import DictConfig
 
@@ -25,7 +26,7 @@ class DenseRetriever:
         self.cfg = cfg
         self._index = None
         self._passages: list[str] = []
-        self._device = "cuda" if cfg.faiss.use_gpu else "cpu"
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
     @classmethod
     def from_config(cls, cfg: DictConfig) -> "DenseRetriever":
