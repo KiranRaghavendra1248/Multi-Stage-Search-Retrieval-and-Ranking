@@ -58,7 +58,7 @@ class BiEncoder(nn.Module):
         self.to(device)
         all_embs = []
         total_batches = (len(texts) + batch_size - 1) // batch_size
-        for i in tqdm(range(0, len(texts), batch_size), total=total_batches, desc="Encoding", unit="batch", leave=True):
+        for i in tqdm(range(0, len(texts), batch_size), total=total_batches, desc="Encoding passages", unit="batch", leave=True):
             batch = texts[i : i + batch_size]
             enc = self.tokenizer(
                 batch, padding=True, truncation=True, max_length=256, return_tensors="pt"

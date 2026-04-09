@@ -57,7 +57,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     logger.info("Variant 1: BM25 baseline")
     bm25 = BM25Index.load(cfg.paths.bm25_index_dir)
     ranked_lists, latencies = [], []
-    for q in tqdm(queries, desc="BM25"):
+    for q in tqdm(queries, desc="V1 BM25 baseline", unit="query", leave=True):
         t0 = time.perf_counter()
         hits = bm25.search(q, top_k=100)
         latencies.append((time.perf_counter() - t0) * 1000)
@@ -100,7 +100,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     pretrained_retriever._passages = all_passages
 
     ranked_lists, latencies = [], []
-    for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="Pretrained bi-enc"):
+    for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="V2 Pretrained bi-encoder", unit="query", leave=True):
         t0 = time.perf_counter()
         stage1 = pretrained_retriever.retrieve(query, top_k=1000)
         latencies.append((time.perf_counter() - t0) * 1000)
@@ -123,7 +123,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         _cfg = cfg.copy()
         _cfg.inference.query_rewriting = use_rewriting
 
-        for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc=name):
+        for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc=name, unit="query", leave=True):
             t0 = time.perf_counter()
 
             processed_q = process_query(query, _cfg)
