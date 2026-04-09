@@ -1,12 +1,15 @@
+import pickle
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from src.data.ms_marco_loader import load_msmarco_stream
+from src.data.ms_marco_loader import load_msmarco_stream, iter_msmarco_stream
 from src.evaluation.metrics import mrr_at_k, recall_at_k
 from src.training.bi_encoder import BiEncoder
 from src.inference.stage1_dense import DenseRetriever
+from src.indexing.faiss_index import build_faiss_index, save_faiss_index, load_faiss_index
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -69,16 +72,33 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     # --- 2. Pre-trained MS MARCO bi-encoder (no fine-tuning) ---
     # Benchmarks what the pre-trained model achieves without our training.
     # Key question: does our hard-negative fine-tuning beat this?
+    # Uses the same full corpus as variants 3-7 for a fair comparison.
     logger.info("Variant 2: Pre-trained MS MARCO bi-encoder (no fine-tuning)")
-    pretrained_retriever = DenseRetriever(
-        model=BiEncoder(cfg.model.pretrained_msmarco_biencoder),
-        cfg=cfg,
-    )
-    all_passages = list({
-        p for r in dev_records
-        for p in r["passages"].get("passage_text", [])
-    })
-    pretrained_retriever.build_index(all_passages)
+    pretrained_model = BiEncoder(cfg.model.pretrained_msmarco_biencoder)
+    pretrained_faiss_path = Path(cfg.paths.faiss_index_pretrained_path)
+    passage_store_path = Path(cfg.paths.passage_store_path)
+
+    if pretrained_faiss_path.exists() and passage_store_path.exists():
+        logger.info("Loading pre-built pretrained FAISS index from %s", pretrained_faiss_path)
+        pretrained_index = load_faiss_index(str(pretrained_faiss_path), cfg)
+        with open(passage_store_path, "rb") as f:
+            all_passages = pickle.load(f)
+    else:
+        logger.info("Building pretrained FAISS index over full MS MARCO corpus...")
+        all_passages = []
+        for rec in iter_msmarco_stream(cfg, split=cfg.data.split_train):
+            all_passages.extend(rec["passages"].get("passage_text", []))
+        import numpy as np
+        embs = pretrained_model.encode(all_passages, batch_size=512)
+        embs = embs.astype(np.float32)
+        pretrained_index = build_faiss_index(embs, cfg)
+        save_faiss_index(pretrained_index, str(pretrained_faiss_path))
+        logger.info("Pretrained FAISS index saved to %s", pretrained_faiss_path)
+
+    pretrained_retriever = DenseRetriever(model=pretrained_model, cfg=cfg)
+    pretrained_retriever._index = pretrained_index
+    pretrained_retriever._passages = all_passages
+
     ranked_lists, latencies = [], []
     for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="Pretrained bi-enc"):
         t0 = time.perf_counter()

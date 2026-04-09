@@ -62,6 +62,7 @@ paths:
   triplets_file: "data/triplets/hard_negatives.jsonl"
   bm25_index_dir: "data/index/bm25"
   faiss_index_path: "data/index/passages.faiss"
+  faiss_index_pretrained_path: "data/index/passages_pretrained.faiss"
   passage_store_path: "data/index/passage_store.pkl"
   checkpoint_dir: "data/checkpoints/"
   best_model_dir: "data/checkpoints/best_model/"
