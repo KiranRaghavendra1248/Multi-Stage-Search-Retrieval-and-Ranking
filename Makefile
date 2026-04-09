@@ -1,7 +1,10 @@
+-include .env
+export
+
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-pull-model phase1
+.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model phase1
 
 venv:
 	python3 -m venv .venv
@@ -32,6 +35,11 @@ phase1:
 sync-push:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" --exclude='/data/' --exclude='__pycache__' --exclude='.venv/' \
 		./ $(REMOTE):/workspace/retrieval/
+
+sync-pull-triplets:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		$(REMOTE):/workspace/retrieval/data/triplets/ \
+		./data/triplets/
 
 sync-pull-model:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \

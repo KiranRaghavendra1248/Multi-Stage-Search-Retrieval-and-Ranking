@@ -125,10 +125,11 @@ Same as Variant 5 with query rewriting enabled. The most expensive variant end-t
 │       └── compare.py            # 7-variant comparison table
 ├── scripts/
 │   ├── phase1_local_dev.py       # Local prototype (no disk writes, < 2 min)
-│   ├── phase2_mine_negatives.py  # Full BM25 indexing + 500k triplet mining
+│   ├── phase2_mine_negatives.py  # Full BM25 indexing + 100k triplet mining
 │   ├── phase3_train_biencoder.py # Fine-tune bi-encoder on Vast.ai
-│   ├── phase4_inference_demo.py  # Interactive CLI demo
-│   └── phase5_evaluate.py        # Full MRR@10 + latency evaluation
+│   ├── phase4_build_index.py     # Build FAISS index from fine-tuned model
+│   ├── phase5_inference_demo.py  # Interactive CLI demo
+│   └── phase6_evaluate.py        # Full MRR@10 + latency evaluation
 └── tests/                        # pytest unit tests
 ```
 
@@ -159,10 +160,11 @@ make sync-push
 make setup-remote
 
 # 3. Run phases sequentially
-python scripts/phase2_mine_negatives.py   # ~4–6 hrs, crash-safe resume
-python scripts/phase3_train_biencoder.py  # ~8–12 hrs, checkpoints every 5k steps
-python scripts/phase4_inference_demo.py --pipeline A   # interactive demo
-python scripts/phase5_evaluate.py                      # full comparison
+python scripts/phase2_mine_negatives.py          # ~6 hrs, crash-safe resume, capped at 100k triplets
+python scripts/phase3_train_biencoder.py         # ~8–12 hrs, checkpoints every 5k steps
+python scripts/phase4_build_index.py             # ~30–60 mins, builds FAISS index from fine-tuned model
+python scripts/phase5_inference_demo.py --pipeline A   # interactive demo
+python scripts/phase6_evaluate.py                      # full 7-variant comparison
 ```
 
 ---
@@ -204,8 +206,9 @@ An optional pre-retrieval step applies pyspellchecker for typo correction and Wo
 | Phase 1 (local dev) | MacBook (arm64, no GPU) | < 2 min |
 | Phase 2 (mining) | Vast.ai 2×16GB GPU | ~6 hrs (1hr index build + ~5hrs for 100k triplets) |
 | Phase 3 (training) | Vast.ai 2×16GB GPU | 8–12 hrs |
-| Phase 4 (inference) | Vast.ai 2×16GB GPU | interactive |
-| Phase 5 (eval) | Vast.ai 2×16GB GPU | 2–4 hrs |
+| Phase 4 (FAISS index build) | Vast.ai 2×16GB GPU | ~30–60 mins |
+| Phase 5 (inference demo) | Vast.ai 2×16GB GPU | interactive |
+| Phase 6 (eval) | Vast.ai 2×16GB GPU | 2–4 hrs |
 
 **GPU memory allocation (remote):**
 - GPU 0 (40%): Llama-3-8B-Instruct AWQ (~6.4GB) via vLLM
