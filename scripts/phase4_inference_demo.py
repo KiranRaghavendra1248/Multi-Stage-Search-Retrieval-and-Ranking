@@ -20,6 +20,7 @@ from src.utils.logging_utils import get_logger
 from src.inference.query_processor import process_query
 from src.inference.hyde import generate_hypothetical_doc
 from src.inference.stage1_dense import DenseRetriever
+from src.data.ms_marco_loader import iter_msmarco_stream
 
 logger = get_logger("phase4")
 
@@ -47,7 +48,17 @@ def run_pipeline(query: str, pipeline: str, cfg) -> None:
 
     # Stage 1
     retriever = DenseRetriever.from_config(cfg)
-    retriever.load()
+    faiss_path = Path(cfg.paths.faiss_index_path)
+    if not faiss_path.exists():
+        logger.info("FAISS index not found — building from MS MARCO corpus...")
+        passages = []
+        for rec in iter_msmarco_stream(cfg, split=cfg.data.split_train):
+            passages.extend(rec["passages"].get("passage_text", []))
+        retriever.build_index(passages)
+        retriever.save()
+        logger.info("FAISS index built and saved to %s", cfg.paths.faiss_index_path)
+    else:
+        retriever.load()
     t0 = time.perf_counter()
     stage1_results = retriever.retrieve(hyde_doc, top_k=1000)
     print(f"\n[Stage 1 - Dense Retrieval] Top-1000 ({(time.perf_counter()-t0)*1000:.0f}ms)")
