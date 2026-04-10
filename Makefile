@@ -36,6 +36,14 @@ sync-push:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" --exclude='/data/' --exclude='__pycache__' --exclude='.venv/' \
 		./ $(REMOTE):/workspace/retrieval/
 
+start-vllm:
+	.venv/bin/python -m vllm.entrypoints.openai.api_server \
+		--model $(VLLM_MODEL) \
+		--quantization awq \
+		--gpu-memory-utilization 0.4 \
+		--port 8000 &
+	@echo "vLLM server starting on port 8000. Wait ~60s before running inference."
+
 sync-pull-triplets:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
 		$(REMOTE):/workspace/retrieval/data/triplets/ \
