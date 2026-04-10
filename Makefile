@@ -4,7 +4,7 @@ export
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model phase1
+.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model phase1 phase2 phase3 phase4 phase5 phase6 run-all
 
 venv:
 	python3 -m venv .venv
@@ -31,6 +31,29 @@ test:
 
 phase1:
 	.venv/bin/python scripts/phase1_local_dev.py
+
+phase2:
+	mkdir -p logs
+	.venv/bin/python scripts/phase2_mine_negatives.py 2>&1 | tee logs/phase2.log
+
+phase3:
+	mkdir -p logs
+	.venv/bin/python scripts/phase3_train_biencoder.py 2>&1 | tee logs/phase3.log
+
+phase4:
+	mkdir -p logs
+	.venv/bin/python scripts/phase4_build_index.py 2>&1 | tee logs/phase4.log
+
+phase5:
+	mkdir -p logs
+	.venv/bin/python scripts/phase5_inference_demo.py --pipeline A 2>&1 | tee logs/phase5.log
+
+phase6:
+	mkdir -p logs
+	.venv/bin/python scripts/phase6_evaluate.py 2>&1 | tee logs/phase6.log
+
+run-all: phase2 phase3 phase4 phase6
+	@echo "All phases complete. Check logs/ for output."
 
 sync-push:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" --exclude='/data/' --exclude='__pycache__' --exclude='.venv/' \

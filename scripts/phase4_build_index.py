@@ -34,12 +34,23 @@ def main():
     logger.info("Loading fine-tuned bi-encoder from %s", cfg.paths.best_model_dir)
     retriever = DenseRetriever.from_config(cfg)
 
-    logger.info("Streaming full MS MARCO corpus...")
+    logger.info("Streaming train passages (sample_cap=%s)...", cfg.data.sample_cap)
     all_passages = []
-    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming corpus", unit="doc", total=808731, leave=True):
-        all_passages.extend(rec["passages"].get("passage_text", []))
+    seen = set()
+    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming train", unit="doc", leave=True):
+        for p in rec["passages"].get("passage_text", []):
+            if p not in seen:
+                seen.add(p)
+                all_passages.append(p)
 
-    logger.info("Total passages: %d", len(all_passages))
+    logger.info("Streaming dev passages (all, for eval coverage)...")
+    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_dev), desc="Streaming dev", unit="doc", leave=True):
+        for p in rec["passages"].get("passage_text", []):
+            if p not in seen:
+                seen.add(p)
+                all_passages.append(p)
+
+    logger.info("Total unique passages: %d", len(all_passages))
     retriever.build_index(all_passages)
     retriever.save()
     logger.info("FAISS index saved to %s", cfg.paths.faiss_index_path)

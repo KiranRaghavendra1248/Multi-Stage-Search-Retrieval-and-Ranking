@@ -16,7 +16,7 @@ _HYDE_PROMPT = (
 def _vllm_payload(query: str, cfg: DictConfig) -> dict:
     return {
         "model": cfg.model.hyde_model,
-        "prompt": _HYDE_PROMPT.format(query=query),
+        "messages": [{"role": "user", "content": _HYDE_PROMPT.format(query=query)}],
         "max_tokens": cfg.model.hyde_max_tokens,
         "temperature": 0.0,
     }
@@ -45,7 +45,7 @@ def generate_hypothetical_doc(query: str, cfg: DictConfig) -> str:
             payload = _vllm_payload(query, cfg)
             resp = requests.post(url, json=payload, timeout=timeout)
             resp.raise_for_status()
-            return resp.json()["choices"][0]["text"].strip()
+            return resp.json()["choices"][0]["message"]["content"].strip()
         else:
             payload = _ollama_payload(query, cfg)
             resp = requests.post(url, json=payload, timeout=timeout)
@@ -68,7 +68,7 @@ async def _generate_one(
         async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=cfg.model.hyde_timeout)) as resp:
             resp.raise_for_status()
             data = await resp.json()
-            return data["choices"][0]["text"].strip()
+            return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         logger.warning("Async HyDE failed for %r: %s", query, e)
         return query

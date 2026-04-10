@@ -34,7 +34,7 @@ def load_msmarco_stream(
 
     Respects cfg.data.sample_cap (None = full dataset).
     """
-    sample_cap: int | None = cfg.data.get("sample_cap", None)
+    sample_cap: int | None = cfg.data.get("sample_cap", None) if split == "train" else None
     logger.info(
         "Loading MS MARCO (%s / %s), sample_cap=%s",
         cfg.data.dataset_config,
@@ -47,7 +47,6 @@ def load_msmarco_stream(
         cfg.data.dataset_config,
         split=split,
         streaming=True,
-        trust_remote_code=True,
     )
 
     stream: Iterator = iter(ds)
@@ -76,14 +75,14 @@ def iter_msmarco_stream(
     """
     Streaming variant — yields records one at a time without buffering.
     Use for Phase 2 (full 3.2M corpus) where memory matters.
+    sample_cap is only applied to the train split; dev/validation is always fully streamed.
     """
-    sample_cap: int | None = cfg.data.get("sample_cap", None)
+    sample_cap: int | None = cfg.data.get("sample_cap", None) if split == "train" else None
     ds = load_dataset(
         cfg.data.dataset,
         cfg.data.dataset_config,
         split=split,
         streaming=True,
-        trust_remote_code=True,
     )
     stream: Iterator = iter(ds)
     if sample_cap is not None:

@@ -66,9 +66,14 @@ class DenseRetriever:
         q_emb = self.model.encode([query], batch_size=1, device=self._device).astype(np.float32)
         indices, scores = search_faiss(self._index, q_emb, top_k=top_k)
 
+        seen = set()
         results = []
         for idx, score in zip(indices[0], scores[0]):
             if idx < 0:
                 continue
-            results.append({"passage": self._passages[idx], "score": float(score)})
+            passage = self._passages[idx]
+            if passage in seen:
+                continue
+            seen.add(passage)
+            results.append({"passage": passage, "score": float(score)})
         return results

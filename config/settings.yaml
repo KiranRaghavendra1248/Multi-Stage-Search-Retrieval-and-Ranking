@@ -2,10 +2,10 @@ environment: auto  # auto-detect: "local" if no CUDA, else "remote"
 
 data:
   dataset: "microsoft/ms_marco"
-  dataset_config: "v2.1"
+  dataset_config: "v1.1"
   split_train: "train"
   split_dev: "validation"
-  sample_cap: null  # null = full dataset; overridden to 1000 in local_settings.yaml
+  sample_cap: 100000  # use first 100k train queries; overridden to 1000 in local_settings.yaml
 
 chunking:
   max_tokens: 256
@@ -21,11 +21,11 @@ model:
   bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"
   pretrained_msmarco_biencoder: "sentence-transformers/msmarco-MiniLM-L-6-v3"  # variant 2 benchmark
   cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
-  hyde_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  hyde_model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"
   hyde_quantization: "awq"
   hyde_gpu_memory_utilization: 0.4
   hyde_max_tokens: 200
-  hyde_server_remote: "http://localhost:8000/v1/completions"
+  hyde_server_remote: "http://localhost:8000/v1/chat/completions"
   hyde_server_local: "http://localhost:11434/api/generate"
   hyde_timeout: 10
 

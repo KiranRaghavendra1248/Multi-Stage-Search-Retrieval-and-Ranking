@@ -1,16 +1,17 @@
 """
-Phase 5: Full Evaluation
+Phase 6: Full Evaluation
 
-Runs all 6 pipeline variants on the MS MARCO dev set and prints a comparison table:
+Runs all 7 pipeline variants on the MS MARCO dev set and prints a comparison table:
   | Variant                            | MRR@10 | Recall@100 | Latency(ms) |
 
 Variants:
   1. BM25 baseline
-  2. Bi-encoder only
-  3. Pipeline A: Bi-encoder + ColBERT
-  4. Pipeline B: Bi-encoder + Cross-Encoder
-  5. Pipeline A + Query Rewriting
-  6. Pipeline B + Query Rewriting
+  2. Pre-trained MS MARCO bi-encoder (no fine-tuning)
+  3. Fine-tuned bi-encoder only
+  4. Pipeline A: Fine-tuned bi-encoder + ColBERT
+  5. Pipeline B: Fine-tuned bi-encoder + Cross-Encoder
+  6. Pipeline A + Query Rewriting
+  7. Pipeline B + Query Rewriting
 """
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ from src.utils.config import load_config
 from src.utils.logging_utils import get_logger
 from src.evaluation.compare import run_comparison, print_comparison_table
 
-logger = get_logger("phase5")
+logger = get_logger("phase6")
 
 
 def main():
