@@ -235,7 +235,7 @@ pytest tests/ -v
 - `transformers` + `sentence-transformers` — BERT bi-encoder, Cross-Encoder
 - `bm25s` — Pure Python BM25, no Java required
 - `faiss-gpu` / `faiss-cpu` — Approximate nearest neighbour search
-- `ragatouille` — ColBERT v2 re-ranking
+- `pylate` — ColBERT v2 re-ranking (late interaction MaxSim)
 - `vllm` — High-throughput LLM inference for HyDE
 - `omegaconf` — Hierarchical YAML config with local/remote overrides
 - `pyspellchecker` + `nltk` — Query rewriting pre-processing

@@ -40,7 +40,8 @@ start-vllm:
 	.venv/bin/python -m vllm.entrypoints.openai.api_server \
 		--model $(VLLM_MODEL) \
 		--quantization awq \
-		--gpu-memory-utilization 0.4 \
+		--gpu-memory-utilization 0.6 \
+		--max-model-len 4096 \
 		--port 8000 &
 	@echo "vLLM server starting on port 8000. Wait ~60s before running inference."
 

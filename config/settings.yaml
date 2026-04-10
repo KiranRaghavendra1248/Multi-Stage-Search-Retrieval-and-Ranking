@@ -31,7 +31,7 @@ model:
 
 inference:
   query_rewriting: false    # toggle: spell check + WordNet synonym expansion before HyDE
-  colbert_model: "colbert-ir/colbertv2.0"
+  colbert_model: "lightonai/colbertv2.0"
   colbert_top_k: 50
   crossencoder_top_k: 10
   crossencoder_batch_size: 16
