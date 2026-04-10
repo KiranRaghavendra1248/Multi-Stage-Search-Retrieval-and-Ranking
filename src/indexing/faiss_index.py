@@ -39,8 +39,12 @@ def build_faiss_index(embeddings: np.ndarray, cfg: DictConfig) -> faiss.Index:
         raise ValueError(f"Unknown faiss.index_type: {index_type}")
 
     if cfg.faiss.use_gpu:
-        logger.info("Moving FAISS index to all GPUs...")
-        index = faiss.index_cpu_to_all_gpus(index)
+        try:
+            logger.info("Moving FAISS index to all GPUs...")
+            index = faiss.index_cpu_to_all_gpus(index)
+            logger.info("FAISS index on GPU.")
+        except Exception as e:
+            logger.warning("Failed to move FAISS index to GPU (%s) — using CPU.", e)
 
     logger.info("FAISS index ready. Total vectors: %d", index.ntotal)
     return index

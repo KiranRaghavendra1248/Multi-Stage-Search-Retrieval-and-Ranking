@@ -7,7 +7,7 @@ faiss:
   index_type: "IVFFlat"
   nlist: 4096
   nprobe: 64
-  use_gpu: true
+  use_gpu: false
 
 training:
   fp16: true
