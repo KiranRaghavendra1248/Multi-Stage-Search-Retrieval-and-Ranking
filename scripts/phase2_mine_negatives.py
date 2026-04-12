@@ -1,8 +1,8 @@
 """
 Phase 2: Hard Negative Mining (Vast.ai)
 
-1. Stream full 3.2M MS MARCO documents → chunk → build bm25s index → save to disk
-2. Stream 500k train queries → mine 5 hard negatives per query → write JSONL
+1. Stream full MS MARCO v1.1 train passages (~8.8M across 532k queries) → chunk → build bm25s index → save to disk
+2. Stream train queries (up to sample_cap) → mine 5 hard negatives per query → write JSONL
 3. Supports crash-safe resume: re-run picks up from where it left off
 """
 import sys
@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils.config import load_config
 from src.utils.logging_utils import get_logger
 from src.data.ms_marco_loader import iter_msmarco_stream
+from src.data.beir_loader import iter_beir_corpus
 from src.data.chunker import chunk_document
 from src.indexing.bm25_index import BM25Index
 from src.mining.hard_negative_miner import mine_hard_negatives
@@ -28,26 +29,27 @@ def main():
     bm25_index_dir = cfg.paths.bm25_index_dir
     triplets_file = cfg.paths.triplets_file
 
-    # --- Step 1: Build BM25 index (skip if already exists) ---
+    # --- Step 1: Build BM25 index over the full BeIR/msmarco corpus (skip if exists) ---
+    # Uses all 8.8M passages from BeIR for a fair comparison with FAISS at eval time.
+    # Step 2 (mining) uses ms_marco v1.1 queries with is_selected positives — unchanged.
     if Path(bm25_index_dir).exists() and (Path(bm25_index_dir) / "passages.pkl").exists():
         logger.info("BM25 index already exists at %s — loading.", bm25_index_dir)
         index = BM25Index.load(bm25_index_dir)
     else:
-        logger.info("Building BM25 index from full MS MARCO corpus...")
+        logger.info("Building BM25 index from BeIR/msmarco corpus (~8.8M passages)...")
         all_passages: list[str] = []
 
-        for rec in iter_msmarco_stream(cfg, split=cfg.data.split_train):
-            for pt in rec["passages"].get("passage_text", []):
-                chunks = chunk_document(
-                    pt,
-                    tokenizer_name=cfg.chunking.tokenizer,
-                    max_tokens=cfg.chunking.max_tokens,
-                    min_tokens_merge=cfg.chunking.min_tokens_merge,
-                )
-                all_passages.extend(chunks)
+        for rec in iter_beir_corpus(cfg):
+            chunks = chunk_document(
+                rec["text"],
+                tokenizer_name=cfg.chunking.tokenizer,
+                max_tokens=cfg.chunking.max_tokens,
+                min_tokens_merge=cfg.chunking.min_tokens_merge,
+            )
+            all_passages.extend(chunks)
 
-            if len(all_passages) % 100_000 == 0 and len(all_passages) > 0:
-                logger.info("  Processed %dM passages so far...", len(all_passages) // 1_000_000)
+            if len(all_passages) % 1_000_000 == 0 and len(all_passages) > 0:
+                logger.info("  Collected %dM passages so far...", len(all_passages) // 1_000_000)
 
         logger.info("Total passages collected: %d", len(all_passages))
         index = BM25Index()

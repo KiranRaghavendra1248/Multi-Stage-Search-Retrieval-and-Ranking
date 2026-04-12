@@ -52,6 +52,37 @@ class DenseRetriever:
             self._passages = pickle.load(f)
         logger.info("DenseRetriever loaded. Passages: %d", len(self._passages))
 
+    def retrieve_batch(self, queries: list[str], top_k: int = 1000) -> list[list[dict]]:
+        """
+        Encode N queries at once → batched FAISS search → N × top_k results.
+
+        Args:
+            queries: list of query strings (HyDE docs or raw queries).
+            top_k:   candidates to return per query.
+
+        Returns:
+            list of lists of {"passage": str, "score": float}, one per query.
+        """
+        q_embs = self.model.encode(
+            queries, batch_size=len(queries), device=self._device
+        ).astype(np.float32)
+        indices_batch, scores_batch = search_faiss(self._index, q_embs, top_k=top_k)
+
+        results = []
+        for indices, scores in zip(indices_batch, scores_batch):
+            seen: set[str] = set()
+            hits: list[dict] = []
+            for idx, score in zip(indices, scores):
+                if idx < 0:
+                    continue
+                passage = self._passages[idx]
+                if passage in seen:
+                    continue
+                seen.add(passage)
+                hits.append({"passage": passage, "score": float(score)})
+            results.append(hits)
+        return results
+
     def retrieve(self, query: str, top_k: int = 1000) -> list[dict]:
         """
         Encode query and retrieve top-k passages.

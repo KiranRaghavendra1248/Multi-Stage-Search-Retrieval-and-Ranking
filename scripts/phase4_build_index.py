@@ -1,8 +1,8 @@
 """
 Phase 4: Build FAISS Index
 
-Encodes all MS MARCO passages using the fine-tuned bi-encoder and builds
-a FAISS index for dense retrieval in Phase 5 and 6.
+Encodes all ~8.8M MS MARCO v1.1 passages using the fine-tuned bi-encoder
+and builds a FAISS index for dense retrieval in Phase 5 and 6.
 
 Saves:
     - data/index/passages.faiss       — FAISS index (fine-tuned model)
@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from tqdm import tqdm
 from src.utils.config import load_config
 from src.utils.logging_utils import get_logger
-from src.data.ms_marco_loader import iter_msmarco_stream
+from src.data.beir_loader import iter_beir_corpus
 from src.inference.stage1_dense import DenseRetriever
 
 logger = get_logger("phase4")
@@ -34,21 +34,17 @@ def main():
     logger.info("Loading fine-tuned bi-encoder from %s", cfg.paths.best_model_dir)
     retriever = DenseRetriever.from_config(cfg)
 
-    logger.info("Streaming train passages (sample_cap=%s)...", cfg.data.sample_cap)
+    # Index all 8.8M passages from BeIR/msmarco corpus.
+    # This is the standard collection used in published MS MARCO benchmarks,
+    # making our MRR@10 and Recall@100 directly comparable to reported results.
+    logger.info("Streaming BeIR/msmarco corpus (~8.8M passages)...")
     all_passages = []
-    seen = set()
-    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_train), desc="Streaming train", unit="doc", leave=True):
-        for p in rec["passages"].get("passage_text", []):
-            if p not in seen:
-                seen.add(p)
-                all_passages.append(p)
-
-    logger.info("Streaming dev passages (all, for eval coverage)...")
-    for rec in tqdm(iter_msmarco_stream(cfg, split=cfg.data.split_dev), desc="Streaming dev", unit="doc", leave=True):
-        for p in rec["passages"].get("passage_text", []):
-            if p not in seen:
-                seen.add(p)
-                all_passages.append(p)
+    seen: set[str] = set()
+    for rec in tqdm(iter_beir_corpus(cfg), desc="Streaming BeIR corpus", unit="passage", leave=True):
+        text = rec["text"]
+        if text not in seen:
+            seen.add(text)
+            all_passages.append(text)
 
     logger.info("Total unique passages: %d", len(all_passages))
     retriever.build_index(all_passages)

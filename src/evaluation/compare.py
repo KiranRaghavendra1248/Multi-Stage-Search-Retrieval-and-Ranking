@@ -1,11 +1,12 @@
 import pickle
 import time
+import torch
 from dataclasses import dataclass
 from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from src.data.ms_marco_loader import load_msmarco_stream, iter_msmarco_stream
+from src.data.beir_loader import iter_beir_corpus, load_beir_dev_eval
 from src.evaluation.metrics import mrr_at_k, recall_at_k
 from src.training.bi_encoder import BiEncoder
 from src.inference.stage1_dense import DenseRetriever
@@ -36,12 +37,9 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         6. Pipeline A + query rewriting
         7. Pipeline B + query rewriting
     """
-    logger.info("Loading dev set for comparison...")
-    dev_records = load_msmarco_stream(cfg, split=cfg.data.split_dev)
-    dev_records = [r for r in dev_records if r["positive_passage"]]
-    queries = [r["query"] for r in dev_records]
-    gold_passages = [r["positive_passage"] for r in dev_records]
-    logger.info("Evaluating on %d dev queries with positives.", len(queries))
+    logger.info("Loading BeIR dev queries and gold passages...")
+    queries, gold_passages = load_beir_dev_eval(cfg)
+    logger.info("Evaluating on %d dev queries.", len(queries))
 
     results = []
 
@@ -84,10 +82,8 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         with open(passage_store_path, "rb") as f:
             all_passages = pickle.load(f)
     else:
-        logger.info("Building pretrained FAISS index over full MS MARCO corpus...")
-        all_passages = []
-        for rec in iter_msmarco_stream(cfg, split=cfg.data.split_train):
-            all_passages.extend(rec["passages"].get("passage_text", []))
+        logger.info("Building pretrained FAISS index over BeIR/msmarco corpus (~8.8M passages)...")
+        all_passages = [rec["text"] for rec in iter_beir_corpus(cfg)]
         import numpy as np
         embs = pretrained_model.encode(all_passages, batch_size=512)
         embs = embs.astype(np.float32)
@@ -118,26 +114,56 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     colbert = ColBERTReranker(cfg)
     cross_enc = CrossEncoderReranker(cfg)
 
+    def _log_vram(label: str) -> None:
+        """Log current and peak GPU memory after each variant."""
+        if torch.cuda.is_available():
+            alloc = torch.cuda.memory_allocated() / 1024 ** 3
+            peak = torch.cuda.max_memory_allocated() / 1024 ** 3
+            logger.info("[VRAM] %s — allocated: %.2f GB, peak: %.2f GB", label, alloc, peak)
+
     def _run_variant(name: str, use_rewriting: bool, reranker=None) -> VariantResult:
-        ranked_lists, latencies = [], []
+        """
+        Evaluate one pipeline variant using batched GPU processing.
+
+        Outer loop: batches of eval_batch_size (32) queries.
+        - FAISS retrieval: all 32 queries encoded and searched at once.
+        - Reranking: rerank_batch() handles the fan-out internally.
+        - HyDE/process_query: stays per-query (sequential LLM calls).
+        Latency is measured over the GPU-heavy portion only (retrieve + rerank).
+        """
+        ranked_lists: list[list[str]] = []
+        latencies: list[float] = []
         _cfg = cfg.copy()
         _cfg.inference.query_rewriting = use_rewriting
+        batch_size: int = cfg.inference.eval_batch_size
 
-        for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc=name, unit="query", leave=True):
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+        for start in tqdm(range(0, len(queries), batch_size), desc=name, unit="batch", leave=True):
+            batch_q = queries[start : start + batch_size]
+            batch_gold = gold_passages[start : start + batch_size]  # noqa: F841 — kept for symmetry
+
+            # HyDE and query rewriting are LLM/CPU calls — stay per-query
+            processed_qs = [process_query(q, _cfg) for q in batch_q]
+            hyde_docs = [generate_hypothetical_doc(q, _cfg) for q in processed_qs]
+
+            # GPU-heavy: batch FAISS retrieval
             t0 = time.perf_counter()
-
-            processed_q = process_query(query, _cfg)
-            hyde_doc = generate_hypothetical_doc(processed_q, _cfg)
-            stage1 = retriever.retrieve(hyde_doc, top_k=1000)
+            stage1_batch = retriever.retrieve_batch(hyde_docs, top_k=1000)
 
             if reranker is None:
-                final = stage1[:10]
+                final_batch = [s[:10] for s in stage1_batch]
             else:
-                final = reranker.rerank(query, stage1)
+                final_batch = reranker.rerank_batch(batch_q, stage1_batch)
 
-            latencies.append((time.perf_counter() - t0) * 1000)
-            ranked_lists.append([r["passage"] for r in final])
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            per_query_ms = elapsed_ms / len(batch_q)
+            latencies.extend([per_query_ms] * len(batch_q))
+            for final in final_batch:
+                ranked_lists.append([r["passage"] for r in final])
 
+        _log_vram(name)
         return VariantResult(
             name=name,
             mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),

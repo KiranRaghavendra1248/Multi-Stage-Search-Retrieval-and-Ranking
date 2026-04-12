@@ -5,7 +5,9 @@ data:
   dataset_config: "v1.1"
   split_train: "train"
   split_dev: "validation"
-  sample_cap: 100000  # use first 100k train queries; overridden to 1000 in local_settings.yaml
+  sample_cap: 100000  # use first 100k train queries for hard negative mining; overridden to null in remote_settings.yaml
+  beir_corpus: "BeIR/msmarco"       # 8.8M passage corpus — used for BM25/FAISS indexing and eval
+  beir_qrels: "BeIR/msmarco-qrels"  # validation qrels (7,440 pairs) — used for eval gold passages
 
 chunking:
   max_tokens: 256
@@ -15,7 +17,7 @@ chunking:
 bm25:
   top_k_retrieve: 100
   n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
-  max_triplets: 100000      # cap on mined triplets; null = mine all 500k queries
+  max_triplets: null        # mine all ~532k queries; set a number to cap
 
 model:
   bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"
@@ -31,10 +33,12 @@ model:
 
 inference:
   query_rewriting: false    # toggle: spell check + WordNet synonym expansion before HyDE
+  eval_batch_size: 32              # outer query batch for evaluation loop
   colbert_model: "lightonai/colbertv2.0"
   colbert_top_k: 50
+  colbert_encode_batch_size: 32    # passages per ColBERT encode() forward pass
   crossencoder_top_k: 10
-  crossencoder_batch_size: 16
+  crossencoder_batch_size: 8       # pairs per CrossEncoder predict() forward pass
 
 training:
   global_batch_size: 256

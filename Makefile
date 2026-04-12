@@ -4,7 +4,7 @@ export
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model phase1 phase2 phase3 phase4 phase5 phase6 run-all
+.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model sync-pull-bm25 phase1 phase2 phase3 phase4 phase5 phase6 run-all
 
 venv:
 	python3 -m venv .venv
@@ -77,3 +77,8 @@ sync-pull-model:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
 		$(REMOTE):/workspace/retrieval/data/checkpoints/best_model/ \
 		./data/checkpoints/best_model/
+
+sync-pull-bm25:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		$(REMOTE):/workspace/retrieval/data/index/bm25/ \
+		./data/index/bm25/
