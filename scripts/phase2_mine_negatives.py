@@ -1,7 +1,7 @@
 """
 Phase 2: Hard Negative Mining (Vast.ai)
 
-1. Stream full MS MARCO v1.1 train passages (~8.8M across 532k queries) → chunk → build bm25s index → save to disk
+1. Stream BeIR/msmarco corpus (~8.8M passages) → build bm25s index → save to disk
 2. Stream train queries (up to sample_cap) → mine 5 hard negatives per query → write JSONL
 3. Supports crash-safe resume: re-run picks up from where it left off
 """
@@ -14,7 +14,6 @@ from src.utils.config import load_config
 from src.utils.logging_utils import get_logger
 from src.data.ms_marco_loader import iter_msmarco_stream
 from src.data.beir_loader import iter_beir_corpus
-from src.data.chunker import chunk_document
 from src.indexing.bm25_index import BM25Index
 from src.mining.hard_negative_miner import mine_hard_negatives
 from src.mining.triplet_writer import TripletWriter
@@ -40,13 +39,7 @@ def main():
         all_passages: list[str] = []
 
         for rec in iter_beir_corpus(cfg):
-            chunks = chunk_document(
-                rec["text"],
-                tokenizer_name=cfg.chunking.tokenizer,
-                max_tokens=cfg.chunking.max_tokens,
-                min_tokens_merge=cfg.chunking.min_tokens_merge,
-            )
-            all_passages.extend(chunks)
+            all_passages.append(rec["text"])
 
             if len(all_passages) % 1_000_000 == 0 and len(all_passages) > 0:
                 logger.info("  Collected %dM passages so far...", len(all_passages) // 1_000_000)

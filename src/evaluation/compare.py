@@ -6,11 +6,11 @@ from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from src.data.beir_loader import iter_beir_corpus, load_beir_dev_eval
+from src.data.beir_loader import load_beir_dev_eval
 from src.evaluation.metrics import mrr_at_k, recall_at_k
 from src.training.bi_encoder import BiEncoder
 from src.inference.stage1_dense import DenseRetriever
-from src.indexing.faiss_index import build_faiss_index, save_faiss_index, load_faiss_index
+from src.indexing.faiss_index import load_faiss_index
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -70,26 +70,16 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     # --- 2. Pre-trained MS MARCO bi-encoder (no fine-tuning) ---
     # Benchmarks what the pre-trained model achieves without our training.
     # Key question: does our hard-negative fine-tuning beat this?
-    # Uses the same full corpus as variants 3-7 for a fair comparison.
+    # Both FAISS indexes are built in Phase 4 over the same 8.8M passage corpus.
     logger.info("Variant 2: Pre-trained MS MARCO bi-encoder (no fine-tuning)")
     pretrained_model = BiEncoder(cfg.model.pretrained_msmarco_biencoder)
     pretrained_faiss_path = Path(cfg.paths.faiss_index_pretrained_path)
     passage_store_path = Path(cfg.paths.passage_store_path)
 
-    if pretrained_faiss_path.exists() and passage_store_path.exists():
-        logger.info("Loading pre-built pretrained FAISS index from %s", pretrained_faiss_path)
-        pretrained_index = load_faiss_index(str(pretrained_faiss_path), cfg)
-        with open(passage_store_path, "rb") as f:
-            all_passages = pickle.load(f)
-    else:
-        logger.info("Building pretrained FAISS index over BeIR/msmarco corpus (~8.8M passages)...")
-        all_passages = [rec["text"] for rec in iter_beir_corpus(cfg)]
-        import numpy as np
-        embs = pretrained_model.encode(all_passages, batch_size=512)
-        embs = embs.astype(np.float32)
-        pretrained_index = build_faiss_index(embs, cfg)
-        save_faiss_index(pretrained_index, str(pretrained_faiss_path))
-        logger.info("Pretrained FAISS index saved to %s", pretrained_faiss_path)
+    logger.info("Loading pretrained FAISS index from %s", pretrained_faiss_path)
+    pretrained_index = load_faiss_index(str(pretrained_faiss_path), cfg)
+    with open(passage_store_path, "rb") as f:
+        all_passages = pickle.load(f)
 
     pretrained_retriever = DenseRetriever(model=pretrained_model, cfg=cfg)
     pretrained_retriever._index = pretrained_index

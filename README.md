@@ -140,7 +140,7 @@ Same as Variant 5 with query rewriting enabled. The most expensive variant end-t
 │   ├── phase1_local_dev.py       # Local prototype (no disk writes, < 2 min)
 │   ├── phase2_mine_negatives.py  # BM25 index (8.8M) + triplet mining (all train queries)
 │   ├── phase3_train_biencoder.py # Fine-tune bi-encoder on Vast.ai
-│   ├── phase4_build_index.py     # Build FAISS index over full 8.8M corpus
+│   ├── phase4_build_index.py     # Build both FAISS indexes (fine-tuned + pretrained) over 8.8M corpus
 │   ├── phase5_inference_demo.py  # Interactive CLI demo
 │   └── phase6_evaluate.py        # Full MRR@10 + latency evaluation (7 variants)
 └── tests/                        # pytest unit tests
@@ -249,7 +249,7 @@ An optional pre-retrieval step applies pyspellchecker for typo correction and Wo
 | Phase 1 (local dev) | MacBook (arm64, no GPU) | < 2 min |
 | Phase 2 (mining) | Vast.ai 1×16GB GPU, 128GB RAM | ~4-6 hrs |
 | Phase 3 (training) | Vast.ai 1×16GB GPU | ~8-12 hrs |
-| Phase 4 (FAISS index build) | Vast.ai 1×16GB GPU, 128GB RAM | ~2-3 hrs |
+| Phase 4 (FAISS index build) | Vast.ai 1×16GB GPU, 128GB RAM | ~4-6 hrs (two indexes) |
 | Phase 5 (inference demo) | Vast.ai 1×16GB GPU | interactive |
 | Phase 6 (eval) | Vast.ai 1×16GB GPU | ~2-4 hrs |
 
