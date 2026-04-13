@@ -33,8 +33,8 @@ def main():
     results = run_comparison(cfg)
     table = print_comparison_table(results)
 
-    # Save table to file
-    out_path = Path("data/evaluation_results.md")
+    # Save full comparison table
+    out_path = Path("results/comparison_table.md")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         f.write("# Evaluation Results\n\n")

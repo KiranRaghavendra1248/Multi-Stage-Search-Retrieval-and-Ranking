@@ -1,7 +1,9 @@
+import json
 import pickle
+import re
 import time
 import torch
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from omegaconf import DictConfig
 from tqdm import tqdm
@@ -60,12 +62,14 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         hits = bm25.search(q, top_k=100)
         latencies.append((time.perf_counter() - t0) * 1000)
         ranked_lists.append([h[0] for h in hits])
-    results.append(VariantResult(
+    v1 = VariantResult(
         name="BM25 baseline",
         mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
         recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
         avg_latency_ms=sum(latencies) / len(latencies),
-    ))
+    )
+    _save_variant_result(v1)
+    results.append(v1)
 
     # --- 2. Pre-trained MS MARCO bi-encoder (no fine-tuning) ---
     # Benchmarks what the pre-trained model achieves without our training.
@@ -91,18 +95,32 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         stage1 = pretrained_retriever.retrieve(query, top_k=1000)
         latencies.append((time.perf_counter() - t0) * 1000)
         ranked_lists.append([r["passage"] for r in stage1[:10]])
-    results.append(VariantResult(
+    v2 = VariantResult(
         name="Pre-trained MS MARCO bi-encoder",
         mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
         recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
         avg_latency_ms=sum(latencies) / len(latencies),
-    ))
+    )
+    _save_variant_result(v2)
+    results.append(v2)
 
     # --- Load our fine-tuned dense retriever (shared by variants 3–7) ---
     retriever = DenseRetriever.from_config(cfg)
     retriever.load()
     colbert = ColBERTReranker(cfg)
     cross_enc = CrossEncoderReranker(cfg)
+
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+
+    def _save_variant_result(result: VariantResult) -> None:
+        """Save a single variant result to results/<slug>.json immediately after it finishes."""
+        slug = re.sub(r"[^a-z0-9]+", "_", result.name.lower()).strip("_")
+        out = results_dir / f"{slug}.json"
+        with open(out, "w") as f:
+            json.dump(asdict(result), f, indent=2)
+        logger.info("[Result] %s — MRR@10: %.4f, Recall@100: %.4f, Latency: %.1f ms → saved to %s",
+                    result.name, result.mrr_at_10, result.recall_at_100, result.avg_latency_ms, out)
 
     def _log_vram(label: str) -> None:
         """Log current and peak GPU memory after each variant."""
@@ -154,12 +172,14 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
                 ranked_lists.append([r["passage"] for r in final])
 
         _log_vram(name)
-        return VariantResult(
+        result = VariantResult(
             name=name,
             mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
             recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
             avg_latency_ms=sum(latencies) / len(latencies),
         )
+        _save_variant_result(result)
+        return result
 
     results.append(_run_variant("Fine-tuned bi-encoder only", use_rewriting=False, reranker=None))
     results.append(_run_variant("Pipeline A: ColBERT", use_rewriting=False, reranker=colbert))
