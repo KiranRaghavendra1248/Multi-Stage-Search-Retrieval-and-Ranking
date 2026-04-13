@@ -46,7 +46,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     # --- Lazy load components ---
     from src.indexing.bm25_index import BM25Index
     from src.inference.query_processor import process_query
-    from src.inference.hyde import generate_hypothetical_doc
+    from src.inference.hyde import generate_hypothetical_docs_sync
     from src.inference.stage1_dense import DenseRetriever
     from src.inference.stage2_colbert import ColBERTReranker
     from src.inference.stage2_crossencoder import CrossEncoderReranker
@@ -134,9 +134,10 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
             batch_q = queries[start : start + batch_size]
             batch_gold = gold_passages[start : start + batch_size]  # noqa: F841 — kept for symmetry
 
-            # HyDE and query rewriting are LLM/CPU calls — stay per-query
+            # Query rewriting is CPU-only — stays per-query
+            # HyDE uses async concurrent requests (32 in-flight) via vLLM continuous batching
             processed_qs = [process_query(q, _cfg) for q in batch_q]
-            hyde_docs = [generate_hypothetical_doc(q, _cfg) for q in processed_qs]
+            hyde_docs = generate_hypothetical_docs_sync(processed_qs, _cfg, concurrency=len(processed_qs))
 
             # GPU-heavy: batch FAISS retrieval
             t0 = time.perf_counter()
