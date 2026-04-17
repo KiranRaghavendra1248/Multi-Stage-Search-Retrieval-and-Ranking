@@ -85,12 +85,17 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     _save_variant_result(v1)
     results.append(v1)
 
-    # --- 2. Pre-trained MS MARCO bi-encoder (no fine-tuning) ---
-    # Benchmarks what the pre-trained model achieves without our training.
-    # Key question: does our hard-negative fine-tuning beat this?
-    # Both FAISS indexes are built in Phase 4 over the same 8.8M passage corpus.
-    logger.info("Variant 2: Pre-trained MS MARCO bi-encoder (no fine-tuning)")
-    pretrained_model = BiEncoder(cfg.model.pretrained_msmarco_biencoder)
+    # --- 2. e5-large-unsupervised (no fine-tuning) ---
+    # Benchmarks what e5-large-unsupervised achieves straight from HuggingFace, without our training.
+    # Same architecture and prefixes as V3 — isolates the contribution of our fine-tuning.
+    # Key question: does our dense-teacher hard-negative training beat the off-the-shelf model?
+    # FAISS index built in Phase 4 over the same 8.8M passage corpus.
+    logger.info("Variant 2: e5-large-unsupervised (no fine-tuning)")
+    pretrained_model = BiEncoder(
+        cfg.model.pretrained_msmarco_biencoder,
+        query_prefix=cfg.model.get("bi_encoder_query_prefix", ""),
+        passage_prefix=cfg.model.get("bi_encoder_passage_prefix", ""),
+    )
     pretrained_faiss_path = Path(cfg.paths.faiss_index_pretrained_path)
     passage_store_path = Path(cfg.paths.passage_store_path)
 
@@ -104,13 +109,13 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     pretrained_retriever._passages = all_passages
 
     ranked_lists, latencies = [], []
-    for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="V2 Pretrained bi-encoder", unit="query", leave=True):
+    for query, gold in tqdm(zip(queries, gold_passages), total=len(queries), desc="V2 e5-large-unsupervised (no FT)", unit="query", leave=True):
         t0 = time.perf_counter()
         stage1 = pretrained_retriever.retrieve(query, top_k=1000)
         latencies.append((time.perf_counter() - t0) * 1000)
         ranked_lists.append([r["passage"] for r in stage1])
     v2 = VariantResult(
-        name="Pre-trained MS MARCO bi-encoder",
+        name="e5-large-unsupervised (no fine-tuning)",
         mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
         recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
         ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),

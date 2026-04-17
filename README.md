@@ -62,8 +62,8 @@ Both iterations are evaluated on the same 11 pipeline variants against the MS MA
 #### Variant 1 — BM25 Baseline
 Pure lexical retrieval using `bm25s` over the full 8.8M passage corpus. No neural components. Sets the floor — establishes how much value dense retrieval adds over keyword matching alone. Same result in both iterations (BM25 is unchanged).
 
-#### Variant 2 — Pre-trained MS MARCO Bi-Encoder (no fine-tuning)
-`sentence-transformers/msmarco-MiniLM-L-6-v3` used as-is, no additional training. The **benchmark** — answers whether our fine-tuning pipeline produces a model better than one already pre-trained on MS MARCO. Same result in both iterations.
+#### Variant 2 — e5-large-unsupervised (no fine-tuning)
+`intfloat/e5-large-unsupervised` used as-is, no additional training — same architecture and prefixes as our fine-tuned student (V3). The **direct benchmark** for our training pipeline: does our dense-teacher hard-negative fine-tuning improve over the off-the-shelf model? Any gain in V3 over V2 is attributable purely to our training recipe.
 
 #### Variant 3 — Our Fine-Tuned Bi-Encoder Only (Stage 1 ablation)
 Fine-tuned bi-encoder with MNRL loss, no re-ranker. Isolates Stage 1 quality.
@@ -149,7 +149,7 @@ The fix is not in the loss function (MNRL ≈ InfoNCE; they're equivalent). The 
 | Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
 |---|---|---|---|---|
 | V1: BM25 Baseline | TBD | TBD | TBD | TBD |
-| V2: Pre-trained MS MARCO bi-encoder (no FT) | TBD | TBD | TBD | TBD |
+| V2: e5-large-unsupervised (no fine-tuning) | TBD | TBD | TBD | TBD |
 | V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
 | V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
 | V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
@@ -165,7 +165,7 @@ The fix is not in the loss function (MNRL ≈ InfoNCE; they're equivalent). The 
 | Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
 |---|---|---|---|---|
 | V1: BM25 Baseline | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
-| V2: Pre-trained MS MARCO bi-encoder (no FT) | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
+| V2: e5-large-unsupervised (no fine-tuning) | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
 | V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
 | V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
 | V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
