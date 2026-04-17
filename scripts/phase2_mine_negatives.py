@@ -72,10 +72,19 @@ def main():
         logger.info("Mining teacher: %s", teacher_name)
         teacher = build_dense_teacher(cfg)
 
-        logger.info("Encoding BeIR corpus with dense teacher and building FAISS index...")
-        all_passages = [rec["text"] for rec in iter_beir_corpus(cfg)]
-        teacher.build_index(all_passages)
-        del all_passages  # free RAM — FAISS holds the index separately
+        teacher_faiss_path = cfg.paths.get("teacher_faiss_index_path", "data/index/teacher.faiss")
+        teacher_store_path = cfg.paths.get("teacher_passage_store_path", "data/index/teacher_passage_store.pkl")
+
+        # Check if we can skip re-encoding (crash-safe resume)
+        from pathlib import Path as _Path
+        if _Path(teacher_faiss_path).exists() and _Path(teacher_store_path).exists():
+            logger.info("Teacher FAISS index already exists — loading from disk (skipping re-encoding).")
+            teacher.build_index([], faiss_path=teacher_faiss_path, passage_store_path=teacher_store_path)
+        else:
+            logger.info("Encoding BeIR corpus with dense teacher and building FAISS index...")
+            all_passages = [rec["text"] for rec in iter_beir_corpus(cfg)]
+            teacher.build_index(all_passages, faiss_path=teacher_faiss_path, passage_store_path=teacher_store_path)
+            del all_passages  # free RAM — FAISS holds the index separately
         mining_index = teacher
 
     # --- Step 3: Mine hard negatives ---

@@ -16,7 +16,6 @@ Two backends:
 """
 from __future__ import annotations
 
-import json
 import logging
 import pickle
 from abc import ABC, abstractmethod
@@ -31,7 +30,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 
-from src.indexing.faiss_index import build_faiss_index, search_faiss
+from src.indexing.faiss_index import build_faiss_index, save_faiss_index, load_faiss_index, search_faiss
 from src.utils.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -52,15 +51,19 @@ class DenseTeacher(ABC):
     def encode_passages(self, texts: list[str]) -> np.ndarray:
         """Return L2-normalized float32 embeddings [N, dim]."""
 
-    def build_index(self, passages: list[str]) -> None:
-        """Encode all passages and build a FAISS index for fast retrieval."""
-        logger.info("Building dense teacher FAISS index over %d passages...", len(passages))
-        self._passages = passages
-        # Encode in chunks to avoid OOM on large corpora
-        embs = self.encode_passages(passages)
-        embs = embs.astype(np.float32)
+    def build_index(
+        self,
+        passages: list[str],
+        faiss_path: Optional[str] = None,
+        passage_store_path: Optional[str] = None,
+    ) -> None:
+        """
+        Encode all passages and build a FAISS index for fast retrieval.
 
-        # Minimal cfg-like object for build_faiss_index.
+        If faiss_path and passage_store_path are provided:
+          - Loads from disk on restart if both files already exist (skips re-encoding).
+          - Saves to disk after building so a crash doesn't require re-encoding 8.8M passages.
+        """
         # use_gpu=False: 8.8M × 1024-dim fp32 = ~36GB — never fits on GPU.
         # Mining FAISS stays on CPU; only the encoder model uses GPU.
         class _Cfg:
@@ -70,8 +73,27 @@ class DenseTeacher(ABC):
                 nprobe = 64
                 use_gpu = False
 
+        if faiss_path and passage_store_path:
+            if Path(faiss_path).exists() and Path(passage_store_path).exists():
+                logger.info("Loading existing teacher FAISS index from %s", faiss_path)
+                self._index = load_faiss_index(faiss_path, _Cfg())
+                with open(passage_store_path, "rb") as f:
+                    self._passages = pickle.load(f)
+                logger.info("Teacher FAISS index loaded (%d passages).", len(self._passages))
+                return
+
+        logger.info("Building dense teacher FAISS index over %d passages...", len(passages))
+        self._passages = passages
+        embs = self.encode_passages(passages).astype(np.float32)
         self._index = build_faiss_index(embs, _Cfg())
         logger.info("Dense teacher FAISS index built.")
+
+        if faiss_path and passage_store_path:
+            Path(faiss_path).parent.mkdir(parents=True, exist_ok=True)
+            save_faiss_index(self._index, faiss_path)
+            with open(passage_store_path, "wb") as f:
+                pickle.dump(self._passages, f)
+            logger.info("Teacher FAISS index saved to %s", faiss_path)
 
     def search(self, query: str, top_k: int = 100) -> list[tuple[str, float]]:
         """Return top_k (passage_text, score) tuples for a single query."""
