@@ -8,6 +8,7 @@ pyspellchecker>=0.8.0
 
 # Inference Engine
 vllm>=0.6.0
+torch-tensorrt  # TensorRT backend for dense teacher encoding (phase2)
 
 # Utilities
 aiohttp>=3.10.0
