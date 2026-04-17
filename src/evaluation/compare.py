@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 
 from src.data.beir_loader import load_beir_dev_eval
-from src.evaluation.metrics import mrr_at_k, recall_at_k
+from src.evaluation.metrics import mrr_at_k, recall_at_k, ndcg_at_k
 from src.training.bi_encoder import BiEncoder
 from src.inference.stage1_dense import DenseRetriever
 from src.indexing.faiss_index import load_faiss_index
@@ -23,6 +23,7 @@ class VariantResult:
     name: str
     mrr_at_10: float
     recall_at_100: float
+    ndcg_at_10: float
     avg_latency_ms: float
 
 
@@ -53,6 +54,18 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     from src.inference.stage2_colbert import ColBERTReranker
     from src.inference.stage2_crossencoder import CrossEncoderReranker
 
+    results_dir = Path("results")
+    results_dir.mkdir(exist_ok=True)
+
+    def _save_variant_result(result: VariantResult) -> None:
+        """Save a single variant result to results/<slug>.json immediately after it finishes."""
+        slug = re.sub(r"[^a-z0-9]+", "_", result.name.lower()).strip("_")
+        out = results_dir / f"{slug}.json"
+        with open(out, "w") as f:
+            json.dump(asdict(result), f, indent=2)
+        logger.info("[Result] %s — MRR@10: %.4f, NDCG@10: %.4f, Recall@100: %.4f, Latency: %.1f ms → saved to %s",
+                    result.name, result.mrr_at_10, result.ndcg_at_10, result.recall_at_100, result.avg_latency_ms, out)
+
     # --- 1. BM25 baseline ---
     logger.info("Variant 1: BM25 baseline")
     bm25 = BM25Index.load(cfg.paths.bm25_index_dir)
@@ -66,6 +79,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         name="BM25 baseline",
         mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
         recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+        ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),
         avg_latency_ms=sum(latencies) / len(latencies),
     )
     _save_variant_result(v1)
@@ -94,11 +108,12 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
         t0 = time.perf_counter()
         stage1 = pretrained_retriever.retrieve(query, top_k=1000)
         latencies.append((time.perf_counter() - t0) * 1000)
-        ranked_lists.append([r["passage"] for r in stage1[:10]])
+        ranked_lists.append([r["passage"] for r in stage1])
     v2 = VariantResult(
         name="Pre-trained MS MARCO bi-encoder",
         mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
         recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+        ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),
         avg_latency_ms=sum(latencies) / len(latencies),
     )
     _save_variant_result(v2)
@@ -109,18 +124,6 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     retriever.load()
     colbert = ColBERTReranker(cfg)
     cross_enc = CrossEncoderReranker(cfg)
-
-    results_dir = Path("results")
-    results_dir.mkdir(exist_ok=True)
-
-    def _save_variant_result(result: VariantResult) -> None:
-        """Save a single variant result to results/<slug>.json immediately after it finishes."""
-        slug = re.sub(r"[^a-z0-9]+", "_", result.name.lower()).strip("_")
-        out = results_dir / f"{slug}.json"
-        with open(out, "w") as f:
-            json.dump(asdict(result), f, indent=2)
-        logger.info("[Result] %s — MRR@10: %.4f, Recall@100: %.4f, Latency: %.1f ms → saved to %s",
-                    result.name, result.mrr_at_10, result.recall_at_100, result.avg_latency_ms, out)
 
     def _log_vram(label: str) -> None:
         """Log current and peak GPU memory after each variant."""
@@ -176,6 +179,7 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
             name=name,
             mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
             recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+            ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),
             avg_latency_ms=sum(latencies) / len(latencies),
         )
         _save_variant_result(result)
@@ -187,16 +191,142 @@ def run_comparison(cfg: DictConfig) -> list[VariantResult]:
     results.append(_run_variant("Pipeline A + Query Rewriting", use_rewriting=True, reranker=colbert))
     results.append(_run_variant("Pipeline B + Query Rewriting", use_rewriting=True, reranker=cross_enc))
 
+    # --- RRF variants: BM25 + dense fusion only (no reranking) ---
+    for rrf_name, rrf_retriever in [
+        ("RRF: BM25 + Fine-tuned", retriever),
+        ("RRF: BM25 + Pretrained", pretrained_retriever),
+    ]:
+        logger.info("Variant: %s", rrf_name)
+        ranked_lists, latencies = [], []
+        batch_size = cfg.inference.eval_batch_size
+
+        for start in tqdm(range(0, len(queries), batch_size), desc=rrf_name, unit="batch", leave=True):
+            batch_q = queries[start : start + batch_size]
+
+            t0 = time.perf_counter()
+            bm25_batch = [bm25.search(q, top_k=1000) for q in batch_q]
+            dense_batch = rrf_retriever.retrieve_batch(batch_q, top_k=1000)
+            fused_batch = [
+                _rrf_fuse(
+                    [h[0] for h in bm25_hits],
+                    [r["passage"] for r in dense_hits],
+                    top_k=1000,
+                )
+                for bm25_hits, dense_hits in zip(bm25_batch, dense_batch)
+            ]
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            per_query_ms = elapsed_ms / len(batch_q)
+            latencies.extend([per_query_ms] * len(batch_q))
+            for fused in fused_batch:
+                ranked_lists.append([r["passage"] for r in fused])
+
+        result = VariantResult(
+            name=rrf_name,
+            mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
+            recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+            ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),
+            avg_latency_ms=sum(latencies) / len(latencies),
+        )
+        _save_variant_result(result)
+        results.append(result)
+
+    # --- RRF variants: BM25 + dense fusion → ColBERT(100) → Cross-Encoder(10) ---
+    for rrf_name, rrf_retriever in [
+        ("RRF: BM25 + Fine-tuned → ColBERT → Cross-Encoder", retriever),
+        ("RRF: BM25 + Pretrained → ColBERT → Cross-Encoder", pretrained_retriever),
+    ]:
+        logger.info("Variant: %s", rrf_name)
+        ranked_lists, latencies = [], []
+        batch_size = cfg.inference.eval_batch_size
+
+        for start in tqdm(range(0, len(queries), batch_size), desc=rrf_name, unit="batch", leave=True):
+            batch_q = queries[start : start + batch_size]
+
+            t0 = time.perf_counter()
+
+            # BM25 top-1000 per query
+            bm25_batch = [bm25.search(q, top_k=1000) for q in batch_q]
+
+            # Dense top-1000 per query
+            dense_batch = rrf_retriever.retrieve_batch(batch_q, top_k=1000)
+
+            # RRF fusion → top-1000 candidates per query
+            fused_batch = [
+                _rrf_fuse(
+                    [h[0] for h in bm25_hits],
+                    [r["passage"] for r in dense_hits],
+                    top_k=1000,
+                )
+                for bm25_hits, dense_hits in zip(bm25_batch, dense_batch)
+            ]
+
+            # ColBERT: 1000 → 100
+            colbert_batch = colbert.rerank_batch(batch_q, fused_batch, top_k=100)
+
+            # Cross-Encoder: 100 → 10
+            final_batch = cross_enc.rerank_batch(batch_q, colbert_batch, top_k=10)
+
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            per_query_ms = elapsed_ms / len(batch_q)
+            latencies.extend([per_query_ms] * len(batch_q))
+            for final in final_batch:
+                ranked_lists.append([r["passage"] for r in final])
+
+        result = VariantResult(
+            name=rrf_name,
+            mrr_at_10=mrr_at_k(ranked_lists, gold_passages, k=10),
+            recall_at_100=recall_at_k(ranked_lists, gold_passages, k=100),
+            ndcg_at_10=ndcg_at_k(ranked_lists, gold_passages, k=10),
+            avg_latency_ms=sum(latencies) / len(latencies),
+        )
+        _save_variant_result(result)
+        results.append(result)
+
     return results
 
 
+def _rrf_fuse(
+    bm25_passages: list[str],
+    dense_passages: list[str],
+    top_k: int = 1000,
+    k: int = 60,
+) -> list[dict]:
+    """
+    Reciprocal Rank Fusion of BM25 and dense ranked lists.
+
+    score(d) = 1/(k + rank_bm25(d)) + 1/(k + rank_dense(d))
+    Passages missing from a list are assigned rank = len(list) + 1.
+
+    Returns:
+        list of {"passage": str, "score": float} sorted by RRF score descending
+    """
+    bm25_rank  = {p: i + 1 for i, p in enumerate(bm25_passages)}
+    dense_rank = {p: i + 1 for i, p in enumerate(dense_passages)}
+
+    bm25_default  = len(bm25_passages) + 1
+    dense_default = len(dense_passages) + 1
+
+    # dict.fromkeys preserves insertion order and deduplicates
+    all_passages = dict.fromkeys(bm25_passages + dense_passages)
+    scored = [
+        {
+            "passage": p,
+            "score": (1.0 / (k + bm25_rank.get(p, bm25_default)))
+                   + (1.0 / (k + dense_rank.get(p, dense_default))),
+        }
+        for p in all_passages
+    ]
+    scored.sort(key=lambda x: -x["score"])
+    return scored[:top_k]
+
+
 def print_comparison_table(results: list[VariantResult]) -> str:
-    header = f"{'Variant':<40} {'MRR@10':>8} {'Recall@100':>12} {'Latency(ms)':>14}"
+    header = f"{'Variant':<40} {'MRR@10':>8} {'NDCG@10':>9} {'Recall@100':>12} {'Latency(ms)':>14}"
     sep = "-" * len(header)
     rows = [header, sep]
     for r in results:
         rows.append(
-            f"{r.name:<40} {r.mrr_at_10:>8.4f} {r.recall_at_100:>12.4f} {r.avg_latency_ms:>14.1f}"
+            f"{r.name:<40} {r.mrr_at_10:>8.4f} {r.ndcg_at_10:>9.4f} {r.recall_at_100:>12.4f} {r.avg_latency_ms:>14.1f}"
         )
     table = "\n".join(rows)
     print(table)

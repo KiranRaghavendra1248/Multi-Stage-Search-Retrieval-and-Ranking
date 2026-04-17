@@ -1,0 +1,6 @@
+{
+  "name": "Pipeline A: ColBERT",
+  "mrr_at_10": 0.2886377745940776,
+  "recall_at_100": 0.5968481375358167,
+  "avg_latency_ms": 1511.4972738773272
+}

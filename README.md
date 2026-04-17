@@ -1,6 +1,9 @@
 # Multi-Stage Document Retrieval & Ranking Pipeline
 
-A production-grade information retrieval system benchmarked on the full MS MARCO passage corpus (8.8M passages), implementing hard negative mining, bi-encoder fine-tuning, HyDE query expansion, and a comparative study of two re-ranking strategies.
+A production-grade information retrieval system benchmarked on the full MS MARCO passage corpus (8.8M passages). Two iterations of training are implemented:
+
+- **Iteration 1**: Hard negative mining with BM25 teacher, `all-MiniLM-L6-v2` bi-encoder
+- **Iteration 2**: Dense teacher mining (`e5-large-unsupervised` or `e5-mistral-7b-instruct`) with positive-aware false negative filtering (NV-Retriever, arxiv:2407.15831), upgraded to `e5-large-unsupervised` student
 
 ---
 
@@ -21,7 +24,7 @@ Raw Query
     │
     ▼
 ┌─────────────────────┐
-│  Stage 1 · Bi-Enc   │  Fine-tuned MiniLM bi-encoder + FAISS → Top-1000
+│  Stage 1 · Bi-Enc   │  Fine-tuned e5-large-unsupervised + FAISS → Top-1000
 └─────────────────────┘
     │
     ├──────────────────────────────────┐
@@ -34,7 +37,7 @@ Raw Query
 └──────────────┘              └──────────────────┘
 ```
 
-**Phase 6 compares 7 variants** — baselines, ablations, and both pipelines with and without query rewriting — measuring MRR@10, Recall@100, and end-to-end latency.
+**Phase 6 compares 11 variants** — baselines, ablations, RRF fusion pipelines, and both re-ranking pipelines with and without query rewriting — measuring MRR@10, Recall@100, and end-to-end latency.
 
 ---
 
@@ -52,28 +55,44 @@ Using the full BeIR/msmarco corpus ensures MRR@10 and Recall@100 are directly co
 
 ## Experiments
 
-Phase 6 runs 7 variants on the standard MS MARCO Dev set (7,440 queries against 8.8M passages). Each variant isolates one variable so the contribution of each component can be measured independently.
+Both iterations are evaluated on the same 11 pipeline variants against the MS MARCO Dev set (7,440 queries, 8.8M passage corpus). The pipeline structure is identical across iterations — what changes is the training recipe for the fine-tuned bi-encoder (V3 and above).
 
-### Variant 1 — BM25 Baseline
-Pure lexical retrieval using `bm25s` over the full 8.8M passage corpus. No neural components. Sets the floor — establishes how much value dense retrieval adds over keyword matching alone.
+### Shared Variants (both iterations)
 
-### Variant 2 — Pre-trained MS MARCO Bi-Encoder (no fine-tuning)
-`sentence-transformers/msmarco-MiniLM-L-6-v3` used as-is, with no additional training. This is the **benchmark** for our training pipeline — it answers the key question: does our hard-negative fine-tuning improve over a model already pre-trained on MS MARCO?
+#### Variant 1 — BM25 Baseline
+Pure lexical retrieval using `bm25s` over the full 8.8M passage corpus. No neural components. Sets the floor — establishes how much value dense retrieval adds over keyword matching alone. Same result in both iterations (BM25 is unchanged).
 
-### Variant 3 — Our Fine-Tuned Bi-Encoder Only (Stage 1 ablation)
-`all-MiniLM-L6-v2` fine-tuned with MNRL loss + BM25 hard negatives, no re-ranker. Isolates the contribution of Stage 1 dense retrieval alone. Compared directly against Variant 2 to measure the impact of our training.
+#### Variant 2 — Pre-trained MS MARCO Bi-Encoder (no fine-tuning)
+`sentence-transformers/msmarco-MiniLM-L-6-v3` used as-is, no additional training. The **benchmark** — answers whether our fine-tuning pipeline produces a model better than one already pre-trained on MS MARCO. Same result in both iterations.
 
-### Variant 4 — Pipeline A: Fine-Tuned Bi-Encoder + ColBERT (no query rewriting)
-Stage 1 top-1000 → ColBERT v2 re-ranks to top-50. ColBERT uses **late interaction**: each query token independently attends to each passage token, taking the max similarity per query token then summing. Fast because token embeddings are pre-computed offline. Measures the quality gain from re-ranking at low latency cost.
+#### Variant 3 — Our Fine-Tuned Bi-Encoder Only (Stage 1 ablation)
+Fine-tuned bi-encoder with MNRL loss, no re-ranker. Isolates Stage 1 quality.
+- **Iteration 1**: `all-MiniLM-L6-v2` + BM25 hard negatives (no false negative filtering)
+- **Iteration 2**: `intfloat/e5-large-unsupervised` + dense teacher hard negatives + TopK-PercPos filtering
 
-### Variant 5 — Pipeline B: Fine-Tuned Bi-Encoder + Cross-Encoder (no query rewriting)
-Stage 1 top-1000 → Cross-Encoder re-ranks to top-10. The cross-encoder concatenates `[query, passage]` and runs full cross-attention — every query token sees every passage token jointly. Slower but higher precision. This is the **precision ceiling** for this architecture family.
+#### Variant 4 — Pipeline A: Fine-Tuned Bi-Encoder + ColBERT (no query rewriting)
+Stage 1 top-1000 → ColBERT v2 re-ranks to top-50. ColBERT uses **late interaction**: each query token independently attends to each passage token (MaxSim), then scores are summed. Token embeddings are pre-computed offline — fast at query time.
 
-### Variant 6 — Pipeline A + Query Rewriting
-Same as Variant 4 but with query rewriting enabled before HyDE: pyspellchecker corrects typos, WordNet appends one synonym per content word (nouns + verbs only). Measures whether pre-retrieval query expansion improves MRR@10 and at what latency cost.
+#### Variant 5 — Pipeline B: Fine-Tuned Bi-Encoder + Cross-Encoder (no query rewriting)
+Stage 1 top-1000 → Cross-Encoder re-ranks to top-10. The cross-encoder runs full cross-attention over the concatenated `[query, passage]` — every token sees every other token. Slower but higher precision. **Precision ceiling** for this architecture family.
 
-### Variant 7 — Pipeline B + Query Rewriting
-Same as Variant 5 with query rewriting enabled. The most expensive variant end-to-end: spell check + synonym expansion + HyDE + dense retrieval + cross-encoder re-ranking.
+#### Variant 6 — Pipeline A + Query Rewriting
+Same as Variant 4 but with query rewriting before HyDE: pyspellchecker corrects typos, WordNet appends one synonym per content word (nouns + verbs). Measures pre-retrieval expansion benefit and latency cost.
+
+#### Variant 7 — Pipeline B + Query Rewriting
+Same as Variant 5 with query rewriting enabled. Most expensive variant end-to-end: spell check + synonym expansion + HyDE + dense retrieval + cross-encoder re-ranking.
+
+#### Variant 8 — RRF: BM25 + Fine-Tuned Bi-Encoder
+Reciprocal Rank Fusion of BM25 (top-1000) and fine-tuned dense retrieval (top-1000). Each passage scored by `1/(60 + rank_bm25) + 1/(60 + rank_dense)`, top-1000 returned with no further re-ranking. Tests whether lexical + semantic fusion improves over either alone.
+
+#### Variant 9 — RRF: BM25 + Pre-trained Bi-Encoder
+Same RRF using the pre-trained MS MARCO model. Directly comparable to Variant 8 to isolate fine-tuning impact within the RRF setup.
+
+#### Variant 10 — RRF: BM25 + Fine-Tuned → ColBERT → Cross-Encoder
+Full pipeline: BM25(1000) + fine-tuned dense(1000) fused via RRF → ColBERT top-100 → Cross-Encoder top-10. Tests whether RRF as Stage 1 improves the precision ceiling over dense-only Stage 1.
+
+#### Variant 11 — RRF: BM25 + Pre-trained → ColBERT → Cross-Encoder
+Same full pipeline using the pre-trained bi-encoder for the dense leg of RRF. Compared against Variant 10 to measure fine-tuning value within the full re-ranking stack.
 
 ---
 
@@ -86,22 +105,78 @@ Same as Variant 5 with query rewriting enabled. The most expensive variant end-t
 | How much does re-ranking improve over Stage 1 alone? | V3 vs V4 vs V5 |
 | What is the latency/quality tradeoff between ColBERT and Cross-Encoder? | V4 vs V5 |
 | Does query rewriting help? At what latency cost? | V4 vs V6, V5 vs V7 |
+| Does RRF fusion improve over dense-only retrieval? | V3 vs V8, V2 vs V9 |
+| Does fine-tuning help within the RRF setup? | V8 vs V9, V10 vs V11 |
+| Does RRF as Stage 1 improve the full re-ranking pipeline? | V5 vs V10, V5 vs V11 |
+| Does dense teacher mining beat BM25 teacher mining? | I1-V3 vs I2-V3 |
+| Does positive-aware filtering improve the full pipeline? | I1-V5 vs I2-V5, I1-V10 vs I2-V10 |
+| Does the larger student model (e5-large vs MiniLM) help independently of training? | I1-V3 vs I2-V3 (controlled for training recipe) |
 
 ---
 
-## Results (Expected — 8.8M corpus)
+## Iteration 1 — Results & Diagnosis
 
-| Variant | MRR@10 | Recall@100 | Avg Latency |
-|---|---|---|---|
-| V1: BM25 Baseline | ~0.18 | ~0.67 | ~15ms |
-| V2: Pre-trained MS MARCO bi-encoder (no FT) | ~0.31 | ~0.86 | ~30ms |
-| V3: Our fine-tuned bi-encoder only | ~0.30+ | ~0.85+ | ~30ms |
-| V4: Pipeline A — ColBERT (no rewriting) | ~0.38 | ~0.87 | ~150ms |
-| V5: Pipeline B — Cross-Encoder (no rewriting) | ~0.40 | ~0.87 | ~600ms |
-| V6: Pipeline A + Query Rewriting | TBD | TBD | TBD |
-| V7: Pipeline B + Query Rewriting | TBD | TBD | TBD |
+### What we observed
 
-> Expected values align with published MS MARCO leaderboard results since we now evaluate against the same 8.8M passage corpus.
+Running all 11 variants on the 7,440 MS MARCO dev queries produced a surprising result: **the fine-tuned bi-encoder (V3) scored worse than both BM25 (V1) and the pretrained MS MARCO model (V2)**. ColBERT and Cross-Encoder re-ranking (V4/V5) partially recovered quality over V3, but the Stage 1 representations remained the bottleneck. Our training run made the model *worse*, not better.
+
+### Root cause — BM25 false negatives
+
+BM25 retrieves by keyword overlap. Passages that are semantically relevant but share few literal query tokens rank low and never surface as candidates — so they never become hard negatives. But passages that share many keywords with the query rank high in BM25, even when they aren't genuinely relevant. These become "hard negatives" in our training data.
+
+The problem: many of these high-BM25-rank passages *are* relevant — they're false negatives. Training with them as negatives directly penalizes the model for ranking semantically similar passages highly, corrupting the contrastive signal throughout training.
+
+The NV-Retriever paper (arxiv:2407.15831) quantified this precisely: approximately **70% of top-ranked BM25 candidates for MS MARCO queries should be labeled positive** but are incorrectly treated as negatives. With 5 hard negatives per query from BM25, most training triplets are poisoned.
+
+### What the re-rankers recover
+
+ColBERT (V4) and Cross-Encoder (V5) re-score the top-1000 candidates with full query-passage attention — a much stronger signal than bi-encoder similarity. This partially undoes the damage from bad Stage 1 representations, which explains why the re-ranking variants score higher than V3 alone.
+
+### What this motivates — Iteration 2
+
+The fix is not in the loss function (MNRL ≈ InfoNCE; they're equivalent). The fix is in the **quality of hard negatives**. Iteration 2 replaces BM25 with a dense teacher model and adds **positive-aware filtering** (TopK-PercPos from NV-Retriever) to remove false negatives before they enter training:
+
+- **Teacher**: `intfloat/e5-large-unsupervised` (local, TensorRT) or `intfloat/e5-mistral-7b-instruct` (vLLM embedding server)
+- **Filtering**: keep only candidates with similarity ≤ 0.95 × positive_score (TopK-PercPos)
+- **Student**: upgraded to `intfloat/e5-large-unsupervised` (335M params, 1024-dim) from MiniLM (22M, 384-dim)
+
+---
+
+## Results (8.8M corpus)
+
+### Iteration 1 — BM25 Teacher, `all-MiniLM-L6-v2` Student
+
+| Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
+|---|---|---|---|---|
+| V1: BM25 Baseline | TBD | TBD | TBD | TBD |
+| V2: Pre-trained MS MARCO bi-encoder (no FT) | TBD | TBD | TBD | TBD |
+| V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
+| V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
+| V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
+| V6: Pipeline A + Query Rewriting | TBD | TBD | TBD | TBD |
+| V7: Pipeline B + Query Rewriting | TBD | TBD | TBD | TBD |
+| V8: RRF — BM25 + Fine-tuned | TBD | TBD | TBD | TBD |
+| V9: RRF — BM25 + Pre-trained | TBD | TBD | TBD | TBD |
+| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+
+### Iteration 2 — Dense Teacher (`e5-large-unsupervised` + TopK-PercPos), `e5-large-unsupervised` Student
+
+| Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
+|---|---|---|---|---|
+| V1: BM25 Baseline | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
+| V2: Pre-trained MS MARCO bi-encoder (no FT) | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
+| V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
+| V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
+| V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
+| V6: Pipeline A + Query Rewriting | TBD | TBD | TBD | TBD |
+| V7: Pipeline B + Query Rewriting | TBD | TBD | TBD | TBD |
+| V8: RRF — BM25 + Fine-tuned | TBD | TBD | TBD | TBD |
+| V9: RRF — BM25 + Pre-trained | TBD | TBD | TBD | TBD |
+| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+
+> Results populated after each Phase 6 run. Each variant saves immediately to `results/<slug>.json`. Pull with `make sync-pull-results`.
 
 ---
 
@@ -120,12 +195,13 @@ Same as Variant 5 with query rewriting enabled. The most expensive variant end-t
 │   │   ├── bm25_index.py         # bm25s wrapper (build/save/load/search)
 │   │   └── faiss_index.py        # FAISS Flat (local) / IVFFlat (remote)
 │   ├── mining/
-│   │   ├── hard_negative_miner.py  # BM25 top-100 → filter gold → top-5 HNs
+│   │   ├── hard_negative_miner.py  # Dense/BM25 teacher → positive-aware filter → top-5 HNs
+│   │   ├── dense_teacher.py        # TensorRTDenseTeacher (e5-large) + VLLMDenseTeacher (e5-mistral)
 │   │   └── triplet_writer.py       # Crash-safe append-mode JSONL writer
 │   ├── training/
-│   │   ├── bi_encoder.py         # MiniLM mean-pool + L2-norm
+│   │   ├── bi_encoder.py         # e5-large-unsupervised mean-pool + L2-norm, query/passage prefix support
 │   │   ├── mnrl_loss.py          # MNRL: 255 in-batch + 1 hard negative
-│   │   ├── trainer.py            # AMP, cosine warm-restart, early stopping
+│   │   ├── trainer.py            # AMP, cosine warm-restart, saves best Recall@100 checkpoint
 │   │   └── validate.py           # Recall@100 on MS MARCO Dev
 │   ├── inference/
 │   │   ├── query_processor.py    # Spell check + synonym expansion
@@ -163,7 +239,7 @@ cp .env.example .env
 make phase1
 ```
 
-### Remote (Phases 2–6 — Vast.ai 16GB GPU)
+### Remote — Iteration 2 (Phases 2–6 — Vast.ai 16GB GPU)
 
 ```bash
 # 1. Push code to Vast.ai
@@ -172,18 +248,30 @@ make sync-push
 # 2. SSH into instance and install
 make setup-remote
 
-# 3. Start vLLM server (for HyDE in phase 5/6)
-make start-vllm   # wait ~60s before running inference
+# 3a. Dense teacher mining (e5-large-unsupervised — no server needed)
+#     Set config: mining.teacher = "intfloat/e5-large-unsupervised"
+make phase2   # ~6-10 hrs: BM25 index + dense teacher FAISS + mine all train triplets
 
-# 4. Run phases sequentially (or chain with &&)
-make phase2   # ~4-6 hrs: BM25 over 8.8M + mine all train triplets
-make phase3   # ~8-12 hrs: fine-tune bi-encoder, early stops on Recall@100
-make phase4   # ~2-3 hrs: encode 8.8M passages, build FAISS IVFFlat index
-make phase5   # interactive demo — sanity check before full eval
-make phase6   # ~2-4 hrs: 7-variant evaluation on 7,440 dev queries
+# 3b. OR: e5-mistral-7b-instruct teacher (start vLLM embedding server first)
+#     Set config: mining.teacher = "intfloat/e5-mistral-7b-instruct"
+#     Set .env: TEACHER_MODEL=intfloat/e5-mistral-7b-instruct
+make start-vllm-teacher   # starts vLLM on port 8001 (INT8, ~8GB VRAM)
+make phase2               # stop teacher server before phase 5/6
+
+# 4. Train bi-encoder
+make phase3   # ~8-12 hrs: fine-tune e5-large-unsupervised to max_steps
+
+# 5. Build FAISS index (1024-dim — delete old indexes if upgrading from Iteration 1)
+make phase4   # ~4-6 hrs: encode 8.8M passages at 1024-dim
+
+# 6. Stop teacher server (if used), start HyDE server
+make stop-vllm-teacher   # only needed if step 3b was used
+make start-vllm          # Mistral-7B-AWQ for HyDE (port 8000)
+make phase5              # interactive demo — sanity check
+make phase6              # ~2-4 hrs: 11-variant evaluation on 7,440 dev queries
 ```
 
-Or run everything at once in a tmux session:
+Or chain in a tmux session:
 ```bash
 make phase2 && make phase3 && make phase4 && make phase6
 ```
@@ -194,6 +282,7 @@ make phase2 && make phase3 && make phase4 && make phase6
 make sync-pull-model      # trained bi-encoder checkpoint
 make sync-pull-triplets   # mined hard negatives JSONL
 make sync-pull-bm25       # BM25 index
+make sync-pull-results    # per-variant JSON results from phase6
 ```
 
 ---
@@ -214,15 +303,35 @@ VRAM usage is logged after each variant so batch sizes can be tuned up if headro
 
 ## Key Design Decisions
 
-### Hard Negative Mining
-BM25 retrieves the top-100 candidates for each query. The gold passage (identified by `is_selected==1`) is filtered out, and the top-5 remaining passages become **hard negatives** — documents that look relevant but are not the correct answer. These force the bi-encoder to learn semantic relevance beyond keyword overlap.
+### Hard Negative Mining — Iteration 2: Dense Teacher + Positive-Aware Filtering
+
+Iteration 1 used BM25 as the teacher for mining hard negatives. The evaluation results revealed that the fine-tuned model performed *worse* than both the BM25 baseline and the pretrained MS MARCO model — diagnosed as a false negative poisoning problem.
+
+BM25 retrieves by keyword overlap. Many top-ranked BM25 candidates are semantically relevant but incorrectly treated as negatives. The NV-Retriever paper (arxiv:2407.15831) found ~70% of top-ranked BM25 candidates for MS MARCO should be labeled positive. Training with these false negatives corrupts the contrastive signal: the model is penalized for ranking genuinely relevant passages highly.
+
+Iteration 2 fixes this with two changes:
+
+**1. Dense teacher**: `intfloat/e5-large-unsupervised` (335M params, 1024-dim) replaces BM25 for candidate retrieval. The teacher builds a FAISS index over the full 8.8M passage corpus and retrieves semantically similar candidates — far fewer false negatives than keyword overlap.
+
+For the highest-quality negatives, `intfloat/e5-mistral-7b-instruct` (7B) can be used as teacher via a vLLM embedding server (`make start-vllm-teacher`, separate from the HyDE server).
+
+**2. Positive-aware filtering (TopK-PercPos)**: Even a dense teacher can surface near-duplicate positives. After retrieval, candidates are filtered using the positive passage score as an anchor:
+
+```
+threshold = perc_pos × sim(query, positive)    # default: 0.95
+keep only candidates where sim(query, candidate) ≤ threshold
+```
+
+This removes candidates that are too similar to the gold passage before they enter training. Both `topk_perc_pos` (relative, recommended) and `topk_margin_pos` (absolute) are supported via config.
+
+**Teacher/student prefixes**: `e5-large-unsupervised` requires `query: ` and `passage: ` prefixes — explicitly required by the model card for correct retrieval. These are applied consistently at mining time (teacher), training time (collate_fn), and inference time (encode_queries/encode_passages).
 
 ### Training Loss: MNRL
 With a batch size of 64 per GPU (128 effective with gradient accumulation), each query gets:
 - **In-batch negatives** (other positives in the batch)
-- **1 hard-mined negative** (from BM25)
+- **1 hard-mined negative** (from dense teacher, false-negative filtered)
 
-This curriculum mix avoids training instability from hard-negative-only batches while still providing the discriminative signal BM25 hard negatives offer.
+MNRL and InfoNCE are functionally identical for this setup (cross-entropy over normalized cosines). The quality gain in Iteration 2 comes entirely from better negatives, not from changing the loss.
 
 ### HyDE (Hypothetical Document Embeddings)
 Instead of embedding the short, keyword-like query, Mistral-7B-AWQ (via vLLM) generates a plausible answer passage. The dense retriever searches for real passages similar to this hypothetical answer — improving recall for queries where the question and relevant passages share few literal words.

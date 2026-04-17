@@ -51,9 +51,18 @@ class TripletDataset(Dataset):
         }
 
 
-def build_collate_fn(tokenizer_name: str, max_length: int = 256):
+def build_collate_fn(
+    tokenizer_name: str,
+    max_length: int = 256,
+    query_prefix: str = "",
+    passage_prefix: str = "",
+):
     """
     Returns a collate_fn that tokenizes a batch of TripletDataset items.
+
+    query_prefix / passage_prefix are prepended before tokenization.
+    Required by e5-family models (e.g. "query: " / "passage: ").
+    Leave empty for models that don't use prefixes (e.g. MiniLM).
 
     Batch tensors:
         query_enc:   BatchEncoding [B, seq_len]
@@ -68,9 +77,9 @@ def build_collate_fn(tokenizer_name: str, max_length: int = 256):
         B = len(batch)
         K = len(batch[0]["hard_negatives"])
 
-        queries = [item["query"] for item in batch]
-        positives = [item["positive"] for item in batch]
-        hard_negs_flat = [hn for item in batch for hn in item["hard_negatives"]]
+        queries = [query_prefix + item["query"] for item in batch]
+        positives = [passage_prefix + item["positive"] for item in batch]
+        hard_negs_flat = [passage_prefix + hn for item in batch for hn in item["hard_negatives"]]
 
         query_enc: BatchEncoding = tokenizer(
             queries, padding=True, truncation=True,

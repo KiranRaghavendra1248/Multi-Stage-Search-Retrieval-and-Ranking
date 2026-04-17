@@ -1,0 +1,6 @@
+{
+  "name": "RRF: BM25 + Fine-tuned \u2192 ColBERT \u2192 Cross-Encoder",
+  "mrr_at_10": 0.3847938554600445,
+  "recall_at_100": 0.6541547277936963,
+  "avg_latency_ms": 1662.8511034405221
+}

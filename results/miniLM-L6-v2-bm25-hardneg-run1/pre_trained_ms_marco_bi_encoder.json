@@ -1,0 +1,6 @@
+{
+  "name": "Pre-trained MS MARCO bi-encoder",
+  "mrr_at_10": 0.2961381157047335,
+  "recall_at_100": 0.7669054441260745,
+  "avg_latency_ms": 19.046280659364275
+}

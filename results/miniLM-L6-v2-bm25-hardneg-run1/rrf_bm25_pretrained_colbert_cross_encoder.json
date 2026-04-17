@@ -1,0 +1,6 @@
+{
+  "name": "RRF: BM25 + Pretrained \u2192 ColBERT \u2192 Cross-Encoder",
+  "mrr_at_10": 0.39209856960931555,
+  "recall_at_100": 0.6765042979942694,
+  "avg_latency_ms": 1606.1418488137372
+}

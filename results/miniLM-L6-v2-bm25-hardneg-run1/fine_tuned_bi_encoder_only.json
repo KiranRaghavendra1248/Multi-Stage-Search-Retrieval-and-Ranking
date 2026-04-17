@@ -1,0 +1,6 @@
+{
+  "name": "Fine-tuned bi-encoder only",
+  "mrr_at_10": 0.13442318188020227,
+  "recall_at_100": 0.27277936962750715,
+  "avg_latency_ms": 5.948410791819942
+}

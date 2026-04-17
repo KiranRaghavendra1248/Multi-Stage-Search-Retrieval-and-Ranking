@@ -12,15 +12,33 @@ data:
 chunking:
   max_tokens: 256
   min_tokens_merge: 64      # paragraphs shorter than this get merged with next
-  tokenizer: "sentence-transformers/all-MiniLM-L6-v2"
+  tokenizer: "intfloat/e5-large-unsupervised"
 
 bm25:
-  top_k_retrieve: 100
+  top_k_retrieve: 100       # used by BM25Index.search() at eval time
+
+mining:
+  teacher: "intfloat/e5-large-unsupervised"           # "bm25" | "intfloat/e5-large-unsupervised" | "intfloat/e5-mistral-7b-instruct"
+  # --- Teacher prefix config ---
+  # e5-large-unsupervised:     query_prefix="query: ", passage_prefix="passage: "
+  # e5-mistral-7b-instruct:    query_prefix="Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ", passage_prefix=""
+  # bm25:                      both ignored
+  teacher_query_prefix: "query: "
+  teacher_passage_prefix: "passage: "
+  teacher_batch_size: 512
+  top_k_retrieve: 100       # candidates to retrieve from teacher before filtering
   n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
   max_triplets: null        # mine all ~532k queries; set a number to cap
+  # --- Positive-aware hard negative filtering (NV-Retriever, arxiv:2407.15831) ---
+  # Only applies when teacher is dense (not bm25). BM25 scores are unnormalized.
+  positive_aware_method: null  # null | "topk_margin_pos" | "topk_perc_pos"
+  margin_pos: 0.05             # topk_margin_pos: threshold = pos_score - margin_pos
+  perc_pos: 0.95               # topk_perc_pos:   threshold = perc_pos * pos_score
 
 model:
-  bi_encoder: "sentence-transformers/all-MiniLM-L6-v2"
+  bi_encoder: "intfloat/e5-large-unsupervised"
+  bi_encoder_query_prefix: "query: "     # required by e5-large-unsupervised
+  bi_encoder_passage_prefix: "passage: " # required by e5-large-unsupervised
   pretrained_msmarco_biencoder: "sentence-transformers/msmarco-MiniLM-L-6-v3"  # variant 2 benchmark
   cross_encoder: "cross-encoder/ms-marco-MiniLM-L-6-v2"
   hyde_model: "TheBloke/Mistral-7B-Instruct-v0.2-AWQ"

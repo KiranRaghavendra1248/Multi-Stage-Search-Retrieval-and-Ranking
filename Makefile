@@ -4,7 +4,7 @@ export
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model sync-pull-bm25 phase1 phase2 phase3 phase4 phase5 phase6 run-all
+.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model sync-pull-bm25 sync-pull-results phase1 phase2 phase3 phase4 phase5 phase6 run-all start-vllm start-vllm-teacher stop-vllm-teacher
 
 venv:
 	python3 -m venv .venv
@@ -66,7 +66,24 @@ start-vllm:
 		--gpu-memory-utilization 0.6 \
 		--max-model-len 4096 \
 		--port 8000 &
-	@echo "vLLM server starting on port 8000. Wait ~60s before running inference."
+	@echo "vLLM HyDE server starting on port 8000. Wait ~60s before running inference."
+
+# Dense teacher embedding server for Phase 2 mining (e5-mistral-7b-instruct).
+# Uses INT8 quantization (~7-8 GB VRAM) leaving room for the FAISS index.
+# NOTE: Cannot run alongside start-vllm (16 GB VRAM constraint).
+#       Stop this server before running Phase 5/6 inference.
+start-vllm-teacher:
+	.venv/bin/python -m vllm.entrypoints.openai.api_server \
+		--model $(TEACHER_MODEL) \
+		--task embedding \
+		--quantization bitsandbytes \
+		--load-format bitsandbytes \
+		--port 8001 &
+	@echo "vLLM teacher embedding server starting on port 8001. Wait ~60s before running phase2."
+
+stop-vllm-teacher:
+	@pkill -f "port 8001" || true
+	@echo "vLLM teacher server (port 8001) stopped."
 
 sync-pull-triplets:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
@@ -82,3 +99,8 @@ sync-pull-bm25:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
 		$(REMOTE):/workspace/retrieval/data/index/bm25/ \
 		./data/index/bm25/
+
+sync-pull-results:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		$(REMOTE):/workspace/retrieval/results/ \
+		./results/

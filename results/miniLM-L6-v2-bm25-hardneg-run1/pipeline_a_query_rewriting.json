@@ -1,0 +1,6 @@
+{
+  "name": "Pipeline A + Query Rewriting",
+  "mrr_at_10": 0.24988663755855683,
+  "recall_at_100": 0.5180515759312321,
+  "avg_latency_ms": 1504.7521937147508
+}

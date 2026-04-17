@@ -26,7 +26,7 @@ def train(cfg: DictConfig) -> BiEncoder:
     - Cosine annealing with hard restarts after linear warmup
     - fp16 AMP (skipped if cfg.training.fp16 == False)
     - Checkpoints every cfg.training.checkpoint_every_steps steps
-    - Early stopping on Recall@100 (patience = cfg.training.early_stop_patience)
+    - Saves best Recall@100 checkpoint but runs to max_steps regardless
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Training device: %s", device)
@@ -44,6 +44,8 @@ def train(cfg: DictConfig) -> BiEncoder:
     collate_fn = build_collate_fn(
         tokenizer_name=cfg.model.bi_encoder,
         max_length=256,
+        query_prefix=cfg.model.get("bi_encoder_query_prefix", ""),
+        passage_prefix=cfg.model.get("bi_encoder_passage_prefix", ""),
     )
     loader = DataLoader(
         dataset,
@@ -80,7 +82,6 @@ def train(cfg: DictConfig) -> BiEncoder:
     global_step = 0
     accum_steps = cfg.training.grad_accumulation_steps
     best_recall = 0.0
-    no_improve_count = 0
 
     logger.info("Starting training. max_steps=%d warmup=%d", cfg.training.max_steps, warmup_steps)
 
@@ -146,17 +147,8 @@ def train(cfg: DictConfig) -> BiEncoder:
                 logger.info("step=%d Recall@100=%.4f", global_step, recall)
                 if recall > best_recall:
                     best_recall = recall
-                    no_improve_count = 0
                     _save_model(model, str(best_model_dir))
                     logger.info("New best Recall@100=%.4f — saved to %s", best_recall, best_model_dir)
-                else:
-                    no_improve_count += 1
-                    logger.info(
-                        "No improvement (%d/%d)", no_improve_count, cfg.training.early_stop_patience
-                    )
-                    if no_improve_count >= cfg.training.early_stop_patience:
-                        logger.info("Early stopping triggered at step %d", global_step)
-                        return _load_best_model(str(best_model_dir), cfg)
 
     return _load_best_model(str(best_model_dir), cfg)
 

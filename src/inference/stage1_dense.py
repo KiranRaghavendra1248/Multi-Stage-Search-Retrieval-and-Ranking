@@ -30,13 +30,17 @@ class DenseRetriever:
 
     @classmethod
     def from_config(cls, cfg: DictConfig) -> "DenseRetriever":
-        model = BiEncoder.load(cfg.paths.best_model_dir)
+        model = BiEncoder.load(
+            cfg.paths.best_model_dir,
+            query_prefix=cfg.model.get("bi_encoder_query_prefix", ""),
+            passage_prefix=cfg.model.get("bi_encoder_passage_prefix", ""),
+        )
         return cls(model, cfg)
 
     def build_index(self, passages: list[str], batch_size: int = 512) -> None:
         logger.info("Encoding %d passages for FAISS index...", len(passages))
         self._passages = passages
-        embs = self.model.encode(passages, batch_size=batch_size, device=self._device)
+        embs = self.model.encode_passages(passages, batch_size=batch_size, device=self._device)
         embs = embs.astype(np.float32)
         self._index = build_faiss_index(embs, self.cfg)
 
@@ -63,7 +67,7 @@ class DenseRetriever:
         Returns:
             list of lists of {"passage": str, "score": float}, one per query.
         """
-        q_embs = self.model.encode(
+        q_embs = self.model.encode_queries(
             queries, batch_size=len(queries), device=self._device
         ).astype(np.float32)
         indices_batch, scores_batch = search_faiss(self._index, q_embs, top_k=top_k)
@@ -94,7 +98,7 @@ class DenseRetriever:
         Returns:
             list of {"passage": str, "score": float}
         """
-        q_emb = self.model.encode([query], batch_size=1, device=self._device).astype(np.float32)
+        q_emb = self.model.encode_queries([query], batch_size=1, device=self._device).astype(np.float32)
         indices, scores = search_faiss(self._index, q_emb, top_k=top_k)
 
         seen = set()
