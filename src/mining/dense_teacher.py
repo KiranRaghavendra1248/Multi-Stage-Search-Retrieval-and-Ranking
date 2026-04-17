@@ -60,13 +60,15 @@ class DenseTeacher(ABC):
         embs = self.encode_passages(passages)
         embs = embs.astype(np.float32)
 
-        # Minimal cfg-like object for build_faiss_index
+        # Minimal cfg-like object for build_faiss_index.
+        # use_gpu=False: 8.8M × 1024-dim fp32 = ~36GB — never fits on GPU.
+        # Mining FAISS stays on CPU; only the encoder model uses GPU.
         class _Cfg:
             class faiss:
                 index_type = "IVFFlat"
                 nlist = 4096
                 nprobe = 64
-                use_gpu = torch.cuda.is_available()
+                use_gpu = False
 
         self._index = build_faiss_index(embs, _Cfg())
         logger.info("Dense teacher FAISS index built.")
@@ -122,10 +124,10 @@ class TensorRTDenseTeacher(DenseTeacher):
 
         logger.info("Loading TensorRTDenseTeacher: %s", model_name)
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._model = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+        self._model = AutoModel.from_pretrained(model_name, dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
         self._model.eval().to(self._device)
 
-        # Attempt TensorRT compilation for faster inference
+        # Compile with TensorRT for faster batched encoding
         try:
             import torch_tensorrt  # noqa: F401
             self._model = torch.compile(self._model, backend="tensorrt")

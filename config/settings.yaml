@@ -25,7 +25,7 @@ mining:
   # bm25:                      both ignored
   teacher_query_prefix: "query: "
   teacher_passage_prefix: "passage: "
-  teacher_batch_size: 512
+  teacher_batch_size: 64   # e5-large (335M, fp16): 64 fits comfortably on 16GB alongside FAISS index
   top_k_retrieve: 100       # candidates to retrieve from teacher before filtering
   n_hard_negatives: 5       # stored per query in JSONL; only 1 used during training
   max_triplets: null        # mine all ~532k queries; set a number to cap
