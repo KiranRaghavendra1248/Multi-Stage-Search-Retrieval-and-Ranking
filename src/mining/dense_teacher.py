@@ -4,8 +4,8 @@ Dense teacher models for hard negative mining.
 Two backends:
 
   TensorRTDenseTeacher — for encoder models (e.g. intfloat/e5-large-unsupervised)
-      Loads via transformers, optionally compiled with torch_tensorrt for speed.
-      Falls back to plain PyTorch if torch_tensorrt is unavailable.
+      Loads via transformers, compiled with torch.compile for speed.
+      Falls back to plain PyTorch (suppress_errors=True) if compilation fails.
 
   VLLMDenseTeacher — for large autoregressive/decoder embedding models
       (e.g. intfloat/e5-mistral-7b-instruct, 7B+)
@@ -22,6 +22,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
+import torch._dynamo
 import numpy as np
 import requests
 import torch
@@ -149,13 +150,14 @@ class TensorRTDenseTeacher(DenseTeacher):
         self._model = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
         self._model.eval().to(self._device)
 
-        # Compile with TensorRT for faster batched encoding
+        # Compile with torch.compile for faster batched encoding.
+        # suppress_errors=True ensures lazy TRT/dynamo failures fall back to eager silently.
         try:
-            import torch_tensorrt  # noqa: F401
-            self._model = torch.compile(self._model, backend="tensorrt")
-            logger.info("TensorRT compilation succeeded for %s", model_name)
+            torch._dynamo.config.suppress_errors = True
+            self._model = torch.compile(self._model)
+            logger.info("torch.compile applied for %s", model_name)
         except Exception as e:
-            logger.warning("torch_tensorrt not available (%s) — using plain PyTorch.", e)
+            logger.warning("torch.compile not available (%s) — using plain PyTorch.", e)
 
         self._passages: list[str] = []
         self._index = None
