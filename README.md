@@ -146,19 +146,21 @@ The fix is not in the loss function (MNRL ≈ InfoNCE; they're equivalent). The 
 
 ### Iteration 1 — BM25 Teacher, `all-MiniLM-L6-v2` Student
 
-| Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
-|---|---|---|---|---|
-| V1: BM25 Baseline | TBD | TBD | TBD | TBD |
-| V2: e5-large-unsupervised (no fine-tuning) | TBD | TBD | TBD | TBD |
-| V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
-| V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
-| V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
-| V6: Pipeline A + Query Rewriting | TBD | TBD | TBD | TBD |
-| V7: Pipeline B + Query Rewriting | TBD | TBD | TBD | TBD |
-| V8: RRF — BM25 + Fine-tuned | TBD | TBD | TBD | TBD |
-| V9: RRF — BM25 + Pre-trained | TBD | TBD | TBD | TBD |
-| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
-| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+*NDCG@10 not tracked in this run (added to eval code in Iteration 2).*
+
+| Variant | MRR@10 | Recall@100 | Latency (ms) |
+|---|---|---|---|
+| V1: BM25 Baseline | 0.1364 | 0.5181 | 94.6 |
+| V2: e5-large-unsupervised (no fine-tuning) | 0.2961 | 0.7669 | 19.0 |
+| V3: Fine-tuned bi-encoder only | 0.1344 | 0.2728 | 5.9 |
+| V4: Pipeline A — ColBERT (no rewriting) | 0.2886 | 0.5968 | 1511.5 |
+| V5: Pipeline B — Cross-Encoder (no rewriting) | 0.2928 | 0.4917 | 666.8 |
+| V6: Pipeline A + Query Rewriting | 0.2499 | 0.5181 | 1504.8 |
+| V7: Pipeline B + Query Rewriting | 0.2536 | 0.4245 | 660.2 |
+| V8: RRF — BM25 + Fine-tuned | 0.2010 | 0.6966 | 111.4 |
+| V9: RRF — BM25 + Pre-trained | 0.2306 | 0.8027 | 81.7 |
+| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | 0.3848 | 0.6542 | 1662.9 |
+| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | 0.3921 | 0.6765 | 1606.1 |
 
 ### Iteration 2 — Dense Teacher (`e5-large-unsupervised` + TopK-PercPos), `e5-large-unsupervised` Student
 
