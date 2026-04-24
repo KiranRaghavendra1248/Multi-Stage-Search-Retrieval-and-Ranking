@@ -315,7 +315,14 @@ Iteration 2 fixes this with two changes:
 
 **1. Dense teacher**: `intfloat/e5-large-unsupervised` (335M params, 1024-dim) replaces BM25 for candidate retrieval. The teacher builds a FAISS index over the full 8.8M passage corpus and retrieves semantically similar candidates — far fewer false negatives than keyword overlap.
 
-For the highest-quality negatives, `intfloat/e5-mistral-7b-instruct` (7B) can be used as teacher via a vLLM embedding server (`make start-vllm-teacher`, separate from the HyDE server).
+Two teacher backends are supported, selected via `cfg.mining.teacher`:
+
+| Teacher | Backend | How it runs | Size | Quality |
+|---|---|---|---|---|
+| `intfloat/e5-large-unsupervised` | `TensorRTDenseTeacher` | Inline — loads into the same process, TensorRT-compiled for fast batched GPU encoding, mean-pool | 335M params | Good |
+| `intfloat/e5-mistral-7b-instruct` | `VLLMDenseTeacher` | Separate HTTP server (`make start-vllm-teacher`, port 8001) — too large to load inline; vLLM handles last-token pooling, INT8 quantization fits in ~8GB VRAM | 7B params | Best |
+
+The vLLM teacher server and the HyDE server (`make start-vllm`, port 8000) cannot run simultaneously on 16GB VRAM — they are never needed at the same time (Phase 2 vs Phase 5/6).
 
 **2. Positive-aware filtering (TopK-PercPos)**: Even a dense teacher can surface near-duplicate positives. After retrieval, candidates are filtered using the positive passage score as an anchor:
 
