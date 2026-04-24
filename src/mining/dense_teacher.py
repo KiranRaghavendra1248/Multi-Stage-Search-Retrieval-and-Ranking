@@ -146,7 +146,7 @@ class TensorRTDenseTeacher(DenseTeacher):
 
         logger.info("Loading TensorRTDenseTeacher: %s", model_name)
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._model = AutoModel.from_pretrained(model_name, dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+        self._model = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
         self._model.eval().to(self._device)
 
         # Compile with TensorRT for faster batched encoding

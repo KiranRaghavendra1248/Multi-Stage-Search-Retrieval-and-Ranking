@@ -43,24 +43,24 @@ def main():
     triplets_file = cfg.paths.triplets_file
     teacher_name: str = cfg.mining.teacher
 
-    # --- Step 1: Build BM25 index (always — needed at eval time regardless of teacher) ---
-    if Path(bm25_index_dir).exists() and (Path(bm25_index_dir) / "passages.pkl").exists():
-        logger.info("BM25 index already exists at %s — loading.", bm25_index_dir)
-        bm25_index = BM25Index.load(bm25_index_dir)
-    else:
-        logger.info("Building BM25 index from BeIR/msmarco corpus (~8.8M passages)...")
-        all_passages: list[str] = []
-        for rec in iter_beir_corpus(cfg):
-            all_passages.append(rec["text"])
-            if len(all_passages) % 1_000_000 == 0 and len(all_passages) > 0:
-                logger.info("  Collected %dM passages so far...", len(all_passages) // 1_000_000)
-        logger.info("Total passages collected: %d", len(all_passages))
-        bm25_index = BM25Index()
-        bm25_index.build(all_passages)
-        bm25_index.save(bm25_index_dir)
-        logger.info("BM25 index saved to %s", bm25_index_dir)
-        # Free the passages list; BM25 index holds its own reference
-        del all_passages
+    # --- Step 1: Build BM25 index (only when teacher is bm25) ---
+    if teacher_name == "bm25":
+        if Path(bm25_index_dir).exists() and (Path(bm25_index_dir) / "passages.pkl").exists():
+            logger.info("BM25 index already exists at %s — loading.", bm25_index_dir)
+            bm25_index = BM25Index.load(bm25_index_dir)
+        else:
+            logger.info("Building BM25 index from BeIR/msmarco corpus (~8.8M passages)...")
+            all_passages: list[str] = []
+            for rec in iter_beir_corpus(cfg):
+                all_passages.append(rec["text"])
+                if len(all_passages) % 1_000_000 == 0 and len(all_passages) > 0:
+                    logger.info("  Collected %dM passages so far...", len(all_passages) // 1_000_000)
+            logger.info("Total passages collected: %d", len(all_passages))
+            bm25_index = BM25Index()
+            bm25_index.build(all_passages)
+            bm25_index.save(bm25_index_dir)
+            logger.info("BM25 index saved to %s", bm25_index_dir)
+            del all_passages
 
     # --- Step 2: Prepare the mining teacher ---
     if teacher_name == "bm25":

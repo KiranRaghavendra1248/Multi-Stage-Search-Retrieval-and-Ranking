@@ -4,7 +4,7 @@ export
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-pull-triplets sync-pull-model sync-pull-bm25 sync-pull-results phase1 phase2 phase3 phase4 phase5 phase6 run-all start-vllm start-vllm-teacher stop-vllm-teacher
+.PHONY: venv setup-local setup-remote test sync-push sync-push-data sync-pull-phase2 sync-pull-triplets sync-pull-model sync-pull-bm25 sync-pull-results phase1 phase2 phase3 phase4 phase5 phase6 run-all start-vllm start-vllm-teacher stop-vllm-teacher
 
 venv:
 	python3 -m venv .venv
@@ -84,6 +84,22 @@ start-vllm-teacher:
 stop-vllm-teacher:
 	@pkill -f "port 8001" || true
 	@echo "vLLM teacher server (port 8001) stopped."
+
+sync-pull-phase2:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		$(REMOTE):/workspace/retrieval/data/triplets/ \
+		./data/triplets/
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		$(REMOTE):/workspace/retrieval/data/index/bm25/ \
+		./data/index/bm25/
+
+sync-push-data:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		./data/triplets/ \
+		$(REMOTE):/workspace/retrieval/data/triplets/
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		./data/index/bm25/ \
+		$(REMOTE):/workspace/retrieval/data/index/bm25/
 
 sync-pull-triplets:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
