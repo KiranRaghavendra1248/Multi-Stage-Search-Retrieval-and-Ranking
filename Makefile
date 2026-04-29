@@ -4,7 +4,7 @@ export
 REMOTE := $(VAST_AI_USER)@$(VAST_AI_IP)
 SSH_PORT := $(or $(VAST_AI_PORT),22)
 
-.PHONY: venv setup-local setup-remote test sync-push sync-push-data sync-pull-phase2 sync-pull-triplets sync-pull-model sync-pull-bm25 sync-pull-results phase1 phase2 phase3 phase4 phase5 phase6 run-all start-vllm start-vllm-teacher stop-vllm-teacher
+.PHONY: venv setup-local setup-remote test sync-push sync-push-data sync-push-bm25 sync-pull-phase2 sync-pull-triplets sync-pull-model sync-pull-bm25 sync-pull-results phase1 phase2 phase3 phase4 phase5 phase6 run-all start-vllm start-vllm-teacher stop-vllm-teacher
 
 venv:
 	python3 -m venv .venv
@@ -38,11 +38,11 @@ phase2:
 
 phase3:
 	mkdir -p logs
-	.venv/bin/python scripts/phase3_train_biencoder.py 2>&1 | tee logs/phase3.log
+	PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True TOKENIZERS_PARALLELISM=false .venv/bin/python scripts/phase3_train_biencoder.py 2>&1 | tee logs/phase3.log
 
 phase4:
 	mkdir -p logs
-	.venv/bin/python scripts/phase4_build_index.py 2>&1 | tee logs/phase4.log
+	PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True TOKENIZERS_PARALLELISM=false .venv/bin/python scripts/phase4_build_index.py 2>&1 | tee logs/phase4.log
 
 phase5:
 	mkdir -p logs
@@ -50,7 +50,7 @@ phase5:
 
 phase6:
 	mkdir -p logs
-	.venv/bin/python scripts/phase6_evaluate.py 2>&1 | tee logs/phase6.log
+	PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True TOKENIZERS_PARALLELISM=false .venv/bin/python scripts/phase6_evaluate.py 2>&1 | tee logs/phase6.log
 
 run-all: phase2 phase3 phase4 phase6
 	@echo "All phases complete. Check logs/ for output."
@@ -110,6 +110,11 @@ sync-pull-model:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
 		$(REMOTE):/workspace/retrieval/data/checkpoints/best_model/ \
 		./data/checkpoints/best_model/
+
+sync-push-bm25:
+	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \
+		./data/index/bm25/ \
+		$(REMOTE):/workspace/retrieval/data/index/bm25/
 
 sync-pull-bm25:
 	rsync -avz --progress -e "ssh -p $(SSH_PORT) -i ~/.ssh/id_vastai" \

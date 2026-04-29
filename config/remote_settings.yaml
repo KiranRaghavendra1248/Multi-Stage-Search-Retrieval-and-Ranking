@@ -12,3 +12,10 @@ faiss:
 training:
   fp16: true
   num_gpus: 1
+  per_gpu_batch_size: 16
+  grad_accumulation_steps: 8
+
+inference:
+  eval_batch_size: 8
+  colbert_encode_batch_size: 8
+  crossencoder_batch_size: 4

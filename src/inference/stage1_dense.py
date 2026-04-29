@@ -37,7 +37,7 @@ class DenseRetriever:
         )
         return cls(model, cfg)
 
-    def build_index(self, passages: list[str], batch_size: int = 512) -> None:
+    def build_index(self, passages: list[str], batch_size: int = 32) -> None:
         logger.info("Encoding %d passages for FAISS index...", len(passages))
         self._passages = passages
         embs = self.model.encode_passages(passages, batch_size=batch_size, device=self._device)

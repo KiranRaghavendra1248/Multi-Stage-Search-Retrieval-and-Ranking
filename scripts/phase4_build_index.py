@@ -76,7 +76,7 @@ def main():
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         pretrained_model = BiEncoder(cfg.model.pretrained_msmarco_biencoder)
-        embs = pretrained_model.encode(all_passages, batch_size=512, device=device)
+        embs = pretrained_model.encode(all_passages, batch_size=32, device=device)
         embs = embs.astype(np.float32)
         pretrained_index = build_faiss_index(embs, cfg)
         save_faiss_index(pretrained_index, str(pretrained_faiss_path))
