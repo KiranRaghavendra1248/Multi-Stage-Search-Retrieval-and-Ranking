@@ -67,18 +67,25 @@ def main():
         retriever.build_index(all_passages)
         save_faiss_index(retriever._index, str(faiss_path))
         logger.info("Fine-tuned FAISS index saved to %s", faiss_path)
+        del retriever  # free model + index from RAM before building pretrained index
 
     # --- Pretrained MS MARCO bi-encoder FAISS index (Variant 2 benchmark) ---
     if pretrained_faiss_path.exists():
         logger.info("Pretrained FAISS index already exists at %s — skipping.", pretrained_faiss_path)
     else:
         logger.info("Building pretrained FAISS index using %s", cfg.model.pretrained_msmarco_biencoder)
+        import gc
         import torch
+        gc.collect()
+        torch.cuda.empty_cache()
         device = "cuda" if torch.cuda.is_available() else "cpu"
         pretrained_model = BiEncoder(cfg.model.pretrained_msmarco_biencoder)
         embs = pretrained_model.encode(all_passages, batch_size=32, device=device)
+        del pretrained_model
+        gc.collect()
         embs = embs.astype(np.float32)
         pretrained_index = build_faiss_index(embs, cfg)
+        del embs
         save_faiss_index(pretrained_index, str(pretrained_faiss_path))
         logger.info("Pretrained FAISS index saved to %s", pretrained_faiss_path)
 
