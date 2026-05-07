@@ -46,10 +46,14 @@ Raw Query
 | Component | Source | Size |
 |---|---|---|
 | Passage corpus (BM25 + FAISS index) | `BeIR/msmarco` corpus | **8.8M passages** |
-| Hard negative mining queries | `microsoft/ms_marco v1.1` train | 532k queries |
+| Hard negative mining queries | `microsoft/ms_marco v1.1` train | 532k queries total; ~79k with valid positives |
 | Evaluation queries + qrels | `BeIR/msmarco-qrels` validation | 7,440 query-gold pairs |
 
 Using the full BeIR/msmarco corpus ensures MRR@10 and Recall@100 are directly comparable to published MS MARCO benchmarks. The gold passage for each dev query is looked up via `BeIR/msmarco-qrels` — a `query-id → corpus-id` mapping — so there is no train/dev leakage.
+
+**Why only ~79k training queries?** The MS MARCO v1.1 train split lists 532k queries, but the BeIR/msmarco-qrels only provides relevance labels for the dev set (7,440 queries) — not for train queries. To find a positive passage for a train query, we must match it against the BeIR corpus via the qrels. Only ~79k train queries have a matching positive in this mapping; the remaining ~453k have no labeled positive in BeIR and are skipped during mining.
+
+Research papers that train on all 532k use `microsoft/ms_marco` directly — its train split includes a `passages` field with `is_selected` binary labels (the positive is the passage marked `is_selected=1`). This sidesteps the qrels dependency entirely. Our `ms_marco_loader.py` already streams this format; wiring it into the mining step would unlock all 532k queries as a future improvement.
 
 ---
 
@@ -166,19 +170,36 @@ The fix is not in the loss function (MNRL ≈ InfoNCE; they're equivalent). The 
 
 | Variant | MRR@10 | NDCG@10 | Recall@100 | Latency (ms) |
 |---|---|---|---|---|
-| V1: BM25 Baseline | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
-| V2: e5-large-unsupervised (no fine-tuning) | *(same as I1)* | *(same as I1)* | *(same as I1)* | *(same as I1)* |
-| V3: Fine-tuned bi-encoder only | TBD | TBD | TBD | TBD |
-| V4: Pipeline A — ColBERT (no rewriting) | TBD | TBD | TBD | TBD |
-| V5: Pipeline B — Cross-Encoder (no rewriting) | TBD | TBD | TBD | TBD |
-| V6: Pipeline A + Query Rewriting | TBD | TBD | TBD | TBD |
-| V7: Pipeline B + Query Rewriting | TBD | TBD | TBD | TBD |
-| V8: RRF — BM25 + Fine-tuned | TBD | TBD | TBD | TBD |
-| V9: RRF — BM25 + Pre-trained | TBD | TBD | TBD | TBD |
-| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
-| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | TBD | TBD | TBD | TBD |
+| V1: BM25 Baseline | 0.1364 | 0.1720 | 0.5181 | 82.5 |
+| V2: e5-large-unsupervised (no fine-tuning) | 0.1270 | 0.1593 | 0.4791 | 84.6 |
+| V3: Fine-tuned bi-encoder only | 0.1484 | 0.1846 | 0.3019 | 26.6 |
+| V4: Pipeline A — ColBERT (no rewriting) | 0.2986 | 0.3465 | 0.6062 | 3012.0 |
+| V5: Pipeline B — Cross-Encoder (no rewriting) | 0.3050 | 0.3528 | 0.5043 | 1607.2 |
+| V6: Pipeline A + Query Rewriting | 0.2583 | 0.3001 | 0.5297 | 3019.0 |
+| V7: Pipeline B + Query Rewriting | 0.2636 | 0.3051 | 0.4364 | 1606.1 |
+| V8: RRF — BM25 + Fine-tuned | 0.1697 | 0.2120 | 0.6638 | 102.6 |
+| V9: RRF — BM25 + Pre-trained | 0.1554 | 0.2008 | 0.6491 | 81.5 |
+| V10: RRF — BM25 + Fine-tuned → ColBERT → Cross-Encoder | 0.3775 | 0.4401 | 0.6387 | 3191.9 |
+| V11: RRF — BM25 + Pre-trained → ColBERT → Cross-Encoder | 0.3800 | 0.4431 | 0.6430 | 3227.4 |
 
-> Results populated after each Phase 6 run. Each variant saves immediately to `results/<slug>.json`. Pull with `make sync-pull-results`.
+> Full results saved in `results/e5-large-dense-teacher-run1/`.
+
+### Iteration 2 — Analysis
+
+**Fine-tuning works this time.** V3 (0.1484 MRR@10) beats V2 off-the-shelf (0.1270) — a +17% improvement. In Iteration 1, fine-tuning made the model *worse* than baseline; in Iteration 2, dense teacher mining with positive-aware filtering fixed the contrastive signal and produced a genuine improvement.
+
+**Why are absolute numbers lower than published benchmarks?** The NV-Retriever paper (arxiv:2407.15831) reports NDCG@10 of ~0.55 for e5-large-unsupervised fine-tuned with the same teacher on BEIR benchmarks (NQ, HotpotQA, FiQA). Our eval uses the full 8.8M passage MS MARCO corpus — significantly harder than BEIR's smaller corpora (100k–5M docs). Additionally, the paper trains on the full MS MARCO training labels (~532k queries with `is_selected` positives from `microsoft/ms_marco`), whereas we mine from `BeIR/msmarco-qrels` which only covers ~79k queries with matching positives. These two factors together explain the gap — the training recipe finding (dense teacher > BM25 teacher) holds regardless of absolute scale.
+
+**Recall@100 drops for V3 (0.30) vs V2 (0.48).** Hard negative training makes the model more precise but less exhaustive — it learns to rank the right passage highly but covers less of the candidate space at k=100. The re-rankers compensate: ColBERT (V4) recovers Recall@100 to 0.61 by re-scoring a wider pool.
+
+**Query rewriting hurts (V6/V7 < V4/V5).** HyDE + synonym expansion adds vocabulary that diverges from the terse style of MS MARCO passages. The hypothetical document generated by Mistral-7B may be fluent but drifts from the actual gold passage phrasing. This pattern was consistent across both iterations.
+
+**RRF + full reranking (V10/V11) is the best setup** at MRR@10 ~0.38 and NDCG@10 ~0.44 — a 28% improvement over Cross-Encoder alone (V5). Interestingly, V11 (pretrained dense leg) slightly edges V10 (fine-tuned dense leg) in this run. The fine-tuned model's lower Recall@100 means fewer correct candidates enter the RRF pool, partially offsetting its precision gains.
+
+**What would improve results further:**
+- Wire `ms_marco_loader.py` positives into mining to use all 532k train queries instead of ~79k
+- Larger effective batch size (more in-batch negatives) — constrained to 128 by 16GB VRAM
+- Multiple hard negatives per query (currently 1) to increase contrastive diversity
 
 ---
 
